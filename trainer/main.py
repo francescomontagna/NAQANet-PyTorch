@@ -25,11 +25,11 @@ parser.add_argument(
     help='word embeddings language')
 parser.add_argument(
     '--common_embeddings_filepath',
-    default=cwd + '/sample/common.txt',
+    default='/mnt/data1/nlp/embeddings/fasttext/fasttext.common.vec', #TODO fare attenzione porco dio
     type=str, help='path of common embedding file')
 parser.add_argument(
     '--word_embeddings_filepath',
-    default=cwd + '/sample/sample_embeddings.txt',
+    default='/mnt/data1/nlp/embeddings/fasttext/fasttext.en.vec',
     type=str, help='path of word embedding file')
 parser.add_argument(
     '--emb_size',
@@ -203,13 +203,11 @@ def main(args):
     train_data = pd.DataFrame(parse_data(train_json))
     eval_data = pd.DataFrame(parse_data(eval_json))
     header = list(train_data.columns)
-    max_context_question_len(train_data)
-    max_context_question_len(eval_data)
 
 
     torch.manual_seed(12)
-    vocab = Vocab(args.language, args.word_embeddings_filepath, args.emb_size)
-    vocab = Vocab(args.language, args.word_embeddings_filepath, args.emb_size)
+    common_vocab = Vocab(args.language, args.common_embeddings_filepath, args.emb_size)
+    vocab = Vocab(args.language, args.word_embeddings_filepath, args.emb_size, base = common_vocab)
     train_dataloader = DataLoader(MultilingualDataset(train_data, vocab),
                                   shuffle=True,
                                   batch_size=args.batch_size,
@@ -220,7 +218,8 @@ def main(args):
                                   collate_fn=generate_batch)
 
     # get model
-    model = QANet(args.emb_size,
+    model = QANet(device, 
+                  args.emb_size,
                   args.d_model,
                   args.context_limit,
                   args.question_limit,
@@ -257,4 +256,3 @@ def main(args):
 
 if __name__ == "__main__":
     main(parser.parse_args())
-    

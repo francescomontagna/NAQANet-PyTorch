@@ -15,7 +15,7 @@ from modules.utils import set_mask
 # Note: see https://github.com/allenai/allennlp-reading-comprehension/blob/master/allennlp_rc/eval/drop_eval.py for pre processing
 
 class PositionalEncoding(nn.Module):  # is this model wrapped in recurrent structure?
-    def __init__(self, d_model, max_len=300):
+    def __init__(self, device, d_model, max_len=300):
         """
         :param d_model: dimension of the embedding (after 1st convolution, that bring emb_size from 300 to 128)
         :param p_dropout: dropout probability
@@ -24,7 +24,6 @@ class PositionalEncoding(nn.Module):  # is this model wrapped in recurrent struc
         Defines the positional encoding to be summed to input embedding
         """
         super(PositionalEncoding, self).__init__()
-
 
         # Computed once for all. See "Attention is all you need for reference"
         self.pos_encoding = torch.zeros((max_len, d_model))  # max_len x d_model matrix
@@ -35,7 +34,7 @@ class PositionalEncoding(nn.Module):  # is this model wrapped in recurrent struc
         self.pos_encoding[:, 0::2] = torch.sin(torch.transpose(position.unsqueeze(0), 0, 1) * div_term)
         self.pos_encoding[:, 1::2] = torch.cos(torch.transpose(position.unsqueeze(0), 0, 1) * div_term)
 
-        self.pos_encoding = self.pos_encoding.unsqueeze(0)
+        self.pos_encoding = self.pos_encoding.unsqueeze(0).to(device)
 
     def forward(self, x):
         """
@@ -60,7 +59,7 @@ class SelfAttention(nn.Module):
 
 
 class EncoderBlock(nn.Module):
-    def __init__(self, d_model:int, len_sentence: int,  num_convs = 4, kernel_size = 7, p_dropout = 0.1, num_heads = 8):
+    def __init__(self, device, d_model:int, len_sentence: int,  num_convs = 4, kernel_size = 7, p_dropout = 0.1, num_heads = 8):
         super(EncoderBlock, self).__init__()
 
         self.d_model = d_model  # size of embeddings of a word
@@ -68,7 +67,7 @@ class EncoderBlock(nn.Module):
         self.dropout = nn.Dropout(p_dropout)
         self.residual_p_dropout = 0.1
 
-        self.pos_enc_layer = PositionalEncoding(d_model,
+        self.pos_enc_layer = PositionalEncoding(device, d_model,
                                                 len_sentence) # once for every block (verify)
 
         self.conv_norms = nn.ModuleList([nn.LayerNorm(d_model) for _ in range(num_convs)])

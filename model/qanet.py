@@ -9,7 +9,8 @@ from modules.utils import set_mask, get_embeddings
 
 
 class QANet(nn.Module):
-    def __init__(self, emb_size:int = 300,
+    def __init__(self, device,
+                 emb_size:int = 300,
                  d_model:int = 128,
                  c_max_len: int = 500,
                  q_max_len: int = 300,
@@ -23,6 +24,7 @@ class QANet(nn.Module):
         """
         super(QANet, self).__init__()
 
+        self.device = device
         self.d_model = d_model
         self.dropout_layer = torch.nn.Dropout(p=p_dropout) if p_dropout > 0 else lambda x: x
 
@@ -31,13 +33,13 @@ class QANet(nn.Module):
         self.highway = Highway(2, d_model)
 
         # Notice! Differentiate p_dropout if char embeddings are introduced
-        self.context_encoder = EncoderBlock(d_model, c_max_len, num_convs=4, kernel_size=7, p_dropout=p_dropout, num_heads=num_heads)
-        self.question_encoder = EncoderBlock(d_model, q_max_len, num_convs=2, kernel_size=5, p_dropout=p_dropout,  num_heads=num_heads)
+        self.context_encoder = EncoderBlock(device, d_model, c_max_len, num_convs=4, kernel_size=7, p_dropout=p_dropout, num_heads=num_heads)
+        self.question_encoder = EncoderBlock(device, d_model, q_max_len, num_convs=2, kernel_size=5, p_dropout=p_dropout,  num_heads=num_heads)
 
         self.cq_attention = CQAttention(d_model, p_dropout)
 
         self.modeling_resizing_layer = nn.Linear(4 * d_model, d_model)
-        self.modeling_encoder_layer = EncoderBlock(d_model, len_sentence=c_max_len, p_dropout=0.1)
+        self.modeling_encoder_layer = EncoderBlock(device, d_model, len_sentence=c_max_len, p_dropout=0.1)
 
         self.pointer = Pointer(d_model) # forward method return start and end spans
 
@@ -45,18 +47,15 @@ class QANet(nn.Module):
     def forward(self, context_batch, question_batch):
 
         # masks for self attention
-        c_mask_enc = set_mask(context_batch, negated=False)
-        q_mask_enc = set_mask(question_batch, negated=False)
+        c_mask_enc = set_mask(context_batch, negated=False).to(self.device)
+        q_mask_enc = set_mask(question_batch, negated=False).to(self.device)
 
         # masks for CQ attention
-        c_mask_c2q = set_mask(context_batch, negated=True) # ~c_mask_enc
-        q_mask_c2q = set_mask(question_batch, negated=True) # ~q_mask_enc
+        c_mask_c2q = set_mask(context_batch, negated=True).to(self.device) # ~c_mask_enc
+        q_mask_c2q = set_mask(question_batch, negated=True).to(self.device) # ~q_mask_enc
 
         cb, qb = self.highway(self.resizing_projection_layer(context_batch)), self.highway(self.resizing_projection_layer(question_batch))
         cb, qb = self.context_encoder(cb, c_mask_enc), self.question_encoder(qb, q_mask_enc)
-
-        c_mask_c2q = set_mask(context_batch, negated=True)
-        q_mask_c2q = set_mask(question_batch, negated=True)
 
         X = self.cq_attention(cb, qb, c_mask_c2q, q_mask_c2q)
 
