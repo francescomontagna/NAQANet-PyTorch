@@ -16,6 +16,7 @@ import torch.nn.functional as F
 # import tqdm
 import numpy as np
 import ujson as json
+import pandas as pd
 
 from collections import Counter
 
@@ -438,7 +439,7 @@ def make_eval_dict_tokens(dev_data_filepath, output_path):
     :param dev_data_filepath: evaluation dataset json path
     :param output_path: where to store the processed dataset. It is a dictionary where (K='question_id', V=[answers])
     """
-    # Posso prendere le risposte, tokenizzarle e ricomporle per avere coerenza con quelle date dalla rete
+    # Tokenize and recompose the answer to help better match
 
     eval_json = load_json(dev_data_filepath)
     data = eval_json['data']
@@ -463,3 +464,13 @@ def make_eval_dict_tokens(dev_data_filepath, output_path):
     with open(output_path, 'w') as f:
         json.dump(eval_dict, f)
 
+def max_context_question_len(df: pd.DataFrame):
+    """
+
+    :param df: dataframe of train/val data
+    :return: context maximum length, passage maximum length
+    """
+    max_context_len = df.context.map(lambda x: len(tokenize(x))).max()
+    max_question_len = df.question.map(lambda x: len(tokenize(x))).max()
+    print(f"max_context_len, max_question_len {max_context_len, max_question_len}")
+    return max_context_len, max_question_len

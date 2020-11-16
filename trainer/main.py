@@ -13,6 +13,7 @@ from trainer.util import make_eval_dict_tokens
 from modules.ema import EMA
 from model.qanet import QANet
 from trainer.trainer import Trainer
+from trainer.util import max_context_question_len
 
 cwd = os.getcwd() # current working directory
 parser = argparse.ArgumentParser()
@@ -24,11 +25,11 @@ parser.add_argument(
     help='word embeddings language')
 parser.add_argument(
     '--common_embeddings_filepath',
-    default=cwd + '/embeddings/common.txt',
-    type=str, help='path of common embedding file') # TODO add
+    default=cwd + '/sample/common.txt',
+    type=str, help='path of common embedding file')
 parser.add_argument(
     '--word_embeddings_filepath',
-    default=cwd + '/embeddings/wiki-news-300d-1M.txt',
+    default=cwd + '/sample/sample_embeddings.txt',
     type=str, help='path of word embedding file')
 parser.add_argument(
     '--emb_size',
@@ -36,13 +37,16 @@ parser.add_argument(
     help='word embedding size (default: 300)')
 
 # dataset
+parser.add_argument("--version",
+                    default = "1.1", type = str,
+                    help = "version of the squad dataset: 1.1 or 2.0")
 parser.add_argument(
     '--train_data_filepath',
-    default=cwd + '/data/train-v2.0.json',
+    default=cwd + '/data/squad/1.1/train-v1.1.json',
     type=str, help='path to training dataset file')
 parser.add_argument(
     '--dev_data_filepath',
-    default=cwd + '/data/dev-v2.0.json',
+    default=cwd + '/data/squad/1.1/dev-v1.1.json',
     type=str, help='path to dev dataset file')
 
 
@@ -170,9 +174,15 @@ parser.add_argument(
 def main(args):
     print("Main is running!")
 
-    dev_eval_dict_path_from_tokens = os.path.join(os.getcwd(), 'dev_eval_dict_from_tokens.json')
-    if 'dev_eval_dict_from_tokens.json' not in os.listdir(os.getcwd()):
+
+    squad_path = os.path.join(os.getcwd(),'data',
+                                            'squad',
+                                            args.version)
+    dev_eval_dict_path_from_tokens = os.path.join(squad_path, 'dev_eval_dict_from_tokens.json')
+    if 'dev_eval_dict_from_tokens.json' not in os.listdir(squad_path):
+        print("Generating valuation dictionary... ", end = "")
         make_eval_dict_tokens(args.dev_data_filepath, dev_eval_dict_path_from_tokens)
+        print("Done")
 
     # set device
     if args.use_gpu:
@@ -193,8 +203,12 @@ def main(args):
     train_data = pd.DataFrame(parse_data(train_json))
     eval_data = pd.DataFrame(parse_data(eval_json))
     header = list(train_data.columns)
+    max_context_question_len(train_data)
+    max_context_question_len(eval_data)
+
 
     torch.manual_seed(12)
+    vocab = Vocab(args.language, args.word_embeddings_filepath, args.emb_size)
     vocab = Vocab(args.language, args.word_embeddings_filepath, args.emb_size)
     train_dataloader = DataLoader(MultilingualDataset(train_data, vocab),
                                   shuffle=True,
