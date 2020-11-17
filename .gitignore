@@ -1,4 +1,4 @@
 **/__pycache__
-**/__vscode__
-**/__idea__
-checkpoints/
+**/.vscode
+**/.idea
+**/checkpoints
