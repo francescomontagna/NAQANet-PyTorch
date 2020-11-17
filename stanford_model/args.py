@@ -246,7 +246,7 @@ def add_common_args(parser):
                         default='./glove_data/dev.npz')
     parser.add_argument('--word_emb_file',
                         type=str,
-                        default='./glove_data/data/word_emb.json')
+                        default='./stanford_model/glove_data/data/word_emb.json')
     parser.add_argument('--char_emb_file',
                         type=str,
                         default='./glove_data/data/char_emb.json')

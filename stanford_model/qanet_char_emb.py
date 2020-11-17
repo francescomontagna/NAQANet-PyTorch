@@ -10,6 +10,10 @@ from modules.utils import set_mask, get_embeddings
 from .util import torch_from_json
 from .args import get_train_args
 
+# TODO
+# Check Mask still workin
+# BIDAF?
+
 
 class QANet(nn.Module):
     def __init__(self, 
@@ -33,7 +37,7 @@ class QANet(nn.Module):
         self.d_model = d_model
         self.dropout_layer = torch.nn.Dropout(p=p_dropout) if p_dropout > 0 else lambda x: x
 
-        self.embeddings = Embeddings(word_embeddings, d_model, p_dropout)
+        self.embeddings = Embedding(word_embeddings, d_model, p_dropout)
 
         # Notice! Differentiate p_dropout if char embeddings are introduced
         self.context_encoder = EncoderBlock(device, d_model, c_max_len, num_convs=4, kernel_size=7, p_dropout=p_dropout, num_heads=num_heads)
@@ -49,18 +53,17 @@ class QANet(nn.Module):
 
     def forward(self, context_batch, question_batch):
 
-        context_batch = self.embeddings(context_batch)
-        question_batch = self.embeddings(question_batch)
+        cb = self.embeddings(context_batch)
+        qb = self.embeddings(question_batch)
 
         # masks for self attention
-        c_mask_enc = set_mask(context_batch, negated=False).to(self.device)
-        q_mask_enc = set_mask(question_batch, negated=False).to(self.device)
+        c_mask_enc = set_mask(cb, negated=False).to(self.device)
+        q_mask_enc = set_mask(qb, negated=False).to(self.device)
 
         # masks for CQ attention
-        c_mask_c2q = set_mask(context_batch, negated=True).to(self.device) # ~c_mask_enc
-        q_mask_c2q = set_mask(question_batch, negated=True).to(self.device) # ~q_mask_enc
+        c_mask_c2q = set_mask(cb, negated=True).to(self.device) # ~c_mask_enc
+        q_mask_c2q = set_mask(qb, negated=True).to(self.device) # ~q_mask_enc
 
-        cb, qb = self.highway(self.resizing_projection_layer(context_batch)), self.highway(self.resizing_projection_layer(question_batch))
         cb, qb = self.context_encoder(cb, c_mask_enc), self.question_encoder(qb, q_mask_enc)
 
         X = self.cq_attention(cb, qb, c_mask_c2q, q_mask_c2q)
@@ -97,7 +100,7 @@ if __name__ == "__main__":
         dropout_prob = 0.1
         device = 'cpu'
         args = get_train_args()
-        word_embeddings = word_vectors = torch_from_json(args.word_emb_file)
+        word_embeddings = torch_from_json(args.word_emb_file)
 
         # define model
         model = QANet(device, word_embeddings)
@@ -117,7 +120,7 @@ if __name__ == "__main__":
                 torch.LongTensor(1, context_lengths[i]).random_(
                     1, wemb_vocab_size)
 
-        p1, p2 = model(context, questions)
+        p1, p2 = model(context_wids, question_wids)
 
         yp1 = torch.argmax(p1, 1)
         yp2 = torch.argmax(p2, 1)

@@ -4,6 +4,8 @@ import torch.nn.functional as F
 
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
+from modules.encoder.highway import Highway
+
 class Embedding(nn.Module):
     """Embedding layer used by BiDAF, without the character-level component.
     Word-level embeddings are further refined using a 2-layer Highway Encoder
@@ -18,7 +20,7 @@ class Embedding(nn.Module):
         self.drop_prob = drop_prob
         self.embed = nn.Embedding.from_pretrained(word_vectors)
         self.proj = nn.Linear(word_vectors.size(1), hidden_size, bias=False)
-        self.hwy = HighwayEncoder(2, hidden_size)
+        self.hwy = Highway(2, hidden_size)
 
     def forward(self, x):
         emb = self.embed(x)   # (batch_size, seq_len, embed_size)

@@ -93,6 +93,7 @@ def set_mask(tensor: torch.tensor, negated: bool = False) -> torch.tensor:
     :param negated: negated wrt attention. I can reuse the same with negation
     :return:
     """
+    
     c_mask = (torch.zeros_like(tensor) != tensor) # actually, when there is the pad character
     if negated:
         return torch.tensor([[False if el == 0 else True for el in sentence] for sentence in c_mask.sum(-1)])

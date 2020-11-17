@@ -74,7 +74,6 @@ def main(args):
                                  log=log)
 
     # Get optimizer and scheduler
-    # optimizer & scheduler
     lr = args.lr
     base_lr = 1.0
     warm_up = args.lr_warm_up_num
@@ -120,7 +119,7 @@ def main(args):
                 # Forward
                 log_p1, log_p2 = model(cw_idxs, qw_idxs)
                 y1, y2 = y1.to(device), y2.to(device)
-                loss = F.nll_loss(log_p1, y1) + F.nll_loss(log_p2, y2)
+                loss = criterion(log_p1, y1) + criterion(log_p2, y2)
                 loss_val = loss.item()
 
                 # Backward
