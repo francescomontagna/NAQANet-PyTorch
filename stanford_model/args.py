@@ -178,7 +178,7 @@ def get_train_args():
     parser.add_argument(
         '--p_dropout',
         default = 0.1, type = float,
-        help = 'dropout probability between layers'
+        help = 'dropout probability between layers')
     
     # metrics & checkpoints
     parser.add_argument('--metric_name',
@@ -260,11 +260,6 @@ def add_common_args(parser):
 
 def add_train_test_args(parser):
     """Add arguments common to train.py and test.py"""
-    parser.add_argument('--name',
-                        '-n',
-                        type=str,
-                        required=True,
-                        help='Name to identify training or test run.')
     parser.add_argument('--max_ans_len',
                         type=int,
                         default=15,
@@ -277,19 +272,10 @@ def add_train_test_args(parser):
                         type=str,
                         default='./save/',
                         help='Base directory for saving information.')
-    parser.add_argument('--batch_size',
-                        type=int,
-                        default=32,
-                        help='Batch size per GPU. Scales automatically when \
-                              multiple GPUs are available.')
     parser.add_argument('--use_squad_v2',
                         type=lambda s: s.lower().startswith('t'),
                         default=True,
                         help='Whether to use SQuAD 2.0 (unanswerable) questions.')
-    parser.add_argument('--hidden_size',
-                        type=int,
-                        default=100,
-                        help='Number of features in encoder hidden layers.')
     parser.add_argument('--num_visuals',
                         type=int,
                         default=10,

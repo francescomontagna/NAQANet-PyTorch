@@ -11,16 +11,16 @@ import torch.nn.functional as F
 import torch.optim as optim
 import torch.optim.lr_scheduler as sched
 import torch.utils.data as data
-import .util
+import util
 
 from args import get_train_args
 from collections import OrderedDict
 from json import dumps
+from models import BiDAF
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 from ujson import load as json_load
-from .util import collate_fn, SQuAD
-from .qanet_char_emb import QANet
+from util import collate_fn, SQuAD
 
 
 def main(args):
@@ -29,8 +29,7 @@ def main(args):
     log = util.get_logger(args.save_dir, args.name)
     tbx = SummaryWriter(args.save_dir)
     log.info(f'Args: {dumps(vars(args), indent=4, sort_keys=True)}')
-    args.batch_size *= max(1, len(args.gpu_ids))
-
+    
     # set device
     if args.use_gpu:
         device_id = args.device_id
@@ -57,10 +56,7 @@ def main(args):
 
     # Get model
     log.info('Building model...')
-    model = QANet(word_vectors=word_vectors,
-                  hidden_size=args.hidden_size,
-                  drop_prob=args.drop_prob)
-    model = nn.DataParallel(model, args.gpu_ids)
+    model = QANet(word_vectors, device, )
     if args.load_path:
         log.info(f'Loading checkpoint from {args.load_path}...')
         model, step = util.load_model(model, args.load_path, args.gpu_ids)
@@ -78,9 +74,17 @@ def main(args):
                                  log=log)
 
     # Get optimizer and scheduler
-    optimizer = optim.Adadelta(model.parameters(), args.lr,
-                               weight_decay=args.l2_wd)
-    scheduler = sched.LambdaLR(optimizer, lambda s: 1.)  # Constant LR
+    # optimizer & scheduler
+    lr = args.lr
+    base_lr = 1.0
+    warm_up = args.lr_warm_up_num
+    params = filter(lambda param: param.requires_grad, model.parameters())
+    optimizer = torch.optim.Adam(lr=base_lr, betas=(args.beta1, args.beta2), eps=1e-7, weight_decay=3e-7, params=params)
+    cr = lr / math.log(warm_up)
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda ee: cr * math.log(ee + 1) if ee < warm_up else lr)
+
+    # set loss
+    criterion = nn.NLLLoss(reduction = 'mean') # LogSoftmax applied in Pointer
 
     # Get data loader
     log.info('Building dataset...')

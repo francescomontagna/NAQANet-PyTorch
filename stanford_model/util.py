@@ -38,7 +38,7 @@ class SQuAD(data.Dataset):
         data_path (str): Path to .npz file containing pre-processed dataset.
         use_v2 (bool): Whether to use SQuAD 2.0 questions. Otherwise only use SQuAD 1.1.
     """
-    def __init__(self, data_path, use_v2=True):
+    def __init__(self, data_path, use_v2=False):
         super(SQuAD, self).__init__()
 
         dataset = np.load(data_path)

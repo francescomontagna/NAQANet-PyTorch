@@ -7,16 +7,18 @@ import torch
 import torch.nn as nn
 
 from modules.utils import set_mask, get_embeddings
+from .util import torch_from_json
+from .args import get_train_args
 
 
 class QANet(nn.Module):
     def __init__(self, 
                  device,
-                 word_vectors,
-                 emb_size:int = 300,
+                 word_embeddings,
+                 w_emb_size:int = 300,
                  d_model:int = 128,
-                 c_max_len: int = 500,
-                 q_max_len: int = 300,
+                 c_max_len: int = 800,
+                 q_max_len: int = 100,
                  p_dropout: float = 0.1,
                  num_heads : int = 8): # need info for padding?
         """
@@ -31,7 +33,7 @@ class QANet(nn.Module):
         self.d_model = d_model
         self.dropout_layer = torch.nn.Dropout(p=p_dropout) if p_dropout > 0 else lambda x: x
 
-        self.embeddings = Embeddings(word_vectors, d_model, p_dropout)
+        self.embeddings = Embeddings(word_embeddings, d_model, p_dropout)
 
         # Notice! Differentiate p_dropout if char embeddings are introduced
         self.context_encoder = EncoderBlock(device, d_model, c_max_len, num_convs=4, kernel_size=7, p_dropout=p_dropout, num_heads=num_heads)
@@ -84,7 +86,6 @@ if __name__ == "__main__":
     test = True
 
     if test:
-        model = QANet()
 
         torch.manual_seed(32)
         batch_size = 4
@@ -94,6 +95,12 @@ if __name__ == "__main__":
         emb_size = 300
         d_model = 128
         dropout_prob = 0.1
+        device = 'cpu'
+        args = get_train_args()
+        word_embeddings = word_vectors = torch_from_json(args.word_emb_file)
+
+        # define model
+        model = QANet(device, word_embeddings)
 
         # fake dataset
         question_lengths = torch.LongTensor(batch_size).random_(1, q_max_len)
@@ -109,9 +116,6 @@ if __name__ == "__main__":
             context_wids[i, 0:context_lengths[i]] = \
                 torch.LongTensor(1, context_lengths[i]).random_(
                     1, wemb_vocab_size)
-
-        context = get_embeddings(context_wids, emb_size)
-        questions = get_embeddings(question_wids, emb_size)
 
         p1, p2 = model(context, questions)
 

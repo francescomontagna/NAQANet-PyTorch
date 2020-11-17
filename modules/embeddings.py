@@ -5,26 +5,27 @@ import torch.nn.functional as F
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 class Embedding(nn.Module):
-    def __init__(self, wemb_dim, cemb_dim, d_model,
-                 dropout_w=0.1, dropout_c=0.05):
-        super().__init__()
-        self.conv2d = nn.Conv2d(cemb_dim, d_model, kernel_size = (1,5), padding=0, bias=True)
-        nn.init.kaiming_normal_(self.conv2d.weight, nonlinearity='relu')
-        self.proj = nn.Linear(wemb_dim + d_model, d_model, bias=False)
-        self.high = Highway(2, d_model)
-        self.dropout_w = dropout_w
-        self.dropout_c = dropout_c
+    """Embedding layer used by BiDAF, without the character-level component.
+    Word-level embeddings are further refined using a 2-layer Highway Encoder
+    (see `HighwayEncoder` class for details).
+    Args:
+        word_vectors (torch.Tensor): Pre-trained word vectors.
+        hidden_size (int): Size of hidden activations.
+        drop_prob (float): Probability of zero-ing out activations
+    """
+    def __init__(self, word_vectors, hidden_size, drop_prob):
+        super(Embedding, self).__init__()
+        self.drop_prob = drop_prob
+        self.embed = nn.Embedding.from_pretrained(word_vectors)
+        self.proj = nn.Linear(word_vectors.size(1), hidden_size, bias=False)
+        self.hwy = HighwayEncoder(2, hidden_size)
 
-    def forward(self, ch_emb, wd_emb, length):
-        ch_emb = ch_emb.permute(0, 3, 1, 2)
-        ch_emb = F.dropout(ch_emb, p=self.dropout_c, training=self.training)
-        ch_emb = self.conv2d(ch_emb)
-        ch_emb = F.relu(ch_emb)
-        ch_emb, _ = torch.max(ch_emb, dim=3)
+    def forward(self, x):
+        emb = self.embed(x)   # (batch_size, seq_len, embed_size)
+        emb = F.dropout(emb, self.drop_prob, self.training)
+        emb = self.proj(emb)  # (batch_size, seq_len, hidden_size)
+        emb = self.hwy(emb)   # (batch_size, seq_len, hidden_size)
 
-        wd_emb = F.dropout(wd_emb, p=self.dropout_w, training=self.training)
-        wd_emb = wd_emb.transpose(1, 2)
-        emb = torch.cat([ch_emb, wd_emb], dim=1)
-        emb = self.proj(emb)
-        emb = self.high(emb)
         return emb
+
+
