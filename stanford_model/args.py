@@ -9,7 +9,6 @@ import os
 cwd = os.getcwd()
 
 
-
 def get_setup_args():
     """Get arguments needed in setup.py."""
     print(f"CWD: {cwd}")
@@ -28,29 +27,29 @@ def get_setup_args():
                         default='http://nlp.stanford.edu/data/glove.840B.300d.zip')
     parser.add_argument('--glove_path',
                         type=str,
-                        default='/mnt/data2/montagna_data/glove/glove.840B.300d.txt')
+                        default='./glove_data/glove.840B.300d.txt')
     parser.add_argument('--dev_meta_file',
                         type=str,
-                        default='./data/dev_meta.json')
+                        default='./glove_data/data/dev_meta.json')
     parser.add_argument('--test_meta_file',
                         type=str,
-                        default='./data/test_meta.json')
+                        default=GLOVE_PATH+'/data/test_meta.json')
     parser.add_argument('--word2idx_file',
                         type=str,
-                        default='./data/word2idx.json')
+                        default='./glove_data/data/word2idx.json')
     parser.add_argument('--char2idx_file',
                         type=str,
-                        default='./data/char2idx.json')
+                        default='./glove_data/data/char2idx.json')
     parser.add_argument('--answer_file',
                         type=str,
-                        default='./data/answer.json')
+                        default='./glove_data/data/answer.json')
     parser.add_argument('--para_limit',
                         type=int,
-                        default=400,
+                        default=770,
                         help='Max number of words in a paragraph')
     parser.add_argument('--ques_limit',
                         type=int,
-                        default=50,
+                        default=70,
                         help='Max number of words to keep from a question')
     parser.add_argument('--test_para_limit',
                         type=int,
@@ -97,26 +96,91 @@ def get_train_args():
     add_common_args(parser)
     add_train_test_args(parser)
 
-    parser.add_argument('--eval_steps',
-                        type=int,
-                        default=50000,
-                        help='Number of steps between successive evaluations.')
-    parser.add_argument('--lr',
-                        type=float,
-                        default=0.5,
-                        help='Learning rate.')
-    parser.add_argument('--l2_wd',
-                        type=float,
-                        default=0,
-                        help='L2 weight decay.')
-    parser.add_argument('--num_epochs',
-                        type=int,
-                        default=30,
-                        help='Number of epochs for which to train. Negative means forever.')
-    parser.add_argument('--drop_prob',
-                        type=float,
-                        default=0.2,
-                        help='Probability of zeroing an activation in dropout layers.')
+    # optimizer & scheduler & weight & exponential moving average
+    parser.add_argument(
+        '--lr',
+        default=0.001, type=float,
+        help='learning rate')
+    parser.add_argument(
+        '--lr_warm_up_num',
+        default=1000, type=int,
+        help='number of warm-up steps of learning rate')
+    parser.add_argument(
+        '--beta1',
+        default=0.8, type=float,
+        help='Adam optimizer beta 1')
+    parser.add_argument(
+        '--beta2',
+        default=0.999, type=float,
+        help='Adam optimizer beta 2')
+    parser.add_argument(
+        '--decay',
+        default=0.9999, type=float,
+        help='exponential moving average decay')
+    parser.add_argument(
+        '--use_scheduler',
+        default=True, action='store_false',
+        help='whether use learning rate scheduler')
+    parser.add_argument(
+        '--use_grad_clip',
+        default=True, action='store_false',
+        help='whether use gradient clip')
+    parser.add_argument(
+        '--grad_clip',
+        default=5.0, type=float,
+        help='global Norm gradient clipping rate')
+    parser.add_argument(
+        '--use_ema',
+        default=False, action='store_true',
+        help='whether use exponential moving average')
+
+    # model
+    parser.add_argument(
+        '--context_limit',
+        default=5000, type=int,
+        help='maximum context token number')
+    parser.add_argument(
+        '--question_limit',
+        default=1000, type=int,
+        help='maximum question token number')
+    parser.add_argument(
+        '--answer_limit',
+        default=30, type=int,
+        help='maximum answer token number')
+    parser.add_argument(
+        '--d_model',
+        default=128, type=int,
+        help='model hidden size')
+    parser.add_argument(
+        '--num_head',
+        default=8, type=int,
+        help='attention num head')
+
+    # cuda
+    parser.add_argument(
+        '--use_gpu',
+        default=False, action='store_true',
+        help='whether or not train on gpu')
+    parser.add_argument(
+        '--device_id',
+        default=-1, type = int,
+        help = 'device id for gpu training')
+
+    # train & evaluate
+    parser.add_argument(
+        '-b', '--batch_size',
+        default=32, type=int,
+        help='mini-batch size (default: 32)')
+    parser.add_argument(
+        '-e', '--epochs',
+        default=30, type=int,
+        help='number of total epochs (default: 30)')
+    parser.add_argument(
+        '--p_dropout',
+        default = 0.1, type = float,
+        help = 'dropout probability between layers'
+    
+    # metrics & checkpoints
     parser.add_argument('--metric_name',
                         type=str,
                         default='F1',
@@ -126,18 +190,12 @@ def get_train_args():
                         type=int,
                         default=5,
                         help='Maximum number of checkpoints to keep on disk.')
-    parser.add_argument('--max_grad_norm',
-                        type=float,
-                        default=5.0,
-                        help='Maximum gradient norm for gradient clipping.')
+
+    # seed
     parser.add_argument('--seed',
                         type=int,
                         default=224,
                         help='Random seed for reproducibility.')
-    parser.add_argument('--ema_decay',
-                        type=float,
-                        default=0.999,
-                        help='Decay rate for exponential moving average of parameters.')
 
     args = parser.parse_args()
 
@@ -153,57 +211,51 @@ def get_train_args():
     return args
 
 
-def get_test_args():
-    """Get arguments needed in test.py."""
-    parser = argparse.ArgumentParser('Test a trained model on SQuAD')
+# def get_test_args():
+#     """Get arguments needed in test.py."""
+#     parser = argparse.ArgumentParser('Test a trained model on SQuAD')
 
-    add_common_args(parser)
-    add_train_test_args(parser)
+#     add_common_args(parser)
+#     add_train_test_args(parser)
 
-    parser.add_argument('--split',
-                        type=str,
-                        default='dev',
-                        choices=('train', 'dev', 'test'),
-                        help='Split to use for testing.')
-    parser.add_argument('--sub_file',
-                        type=str,
-                        default='submission.csv',
-                        help='Name for submission file.')
+#     parser.add_argument('--split',
+#                         type=str,
+#                         default='dev',
+#                         choices=('train', 'dev', 'test'),
+#                         help='Split to use for testing.')
+#     parser.add_argument('--sub_file',
+#                         type=str,
+#                         default='submission.csv',
+#                         help='Name for submission file.')
 
-    # Require load_path for test.py
-    args = parser.parse_args()
-    if not args.load_path:
-        raise argparse.ArgumentError('Missing required argument --load_path')
+#     # Require load_path for test.py
+#     args = parser.parse_args()
+#     if not args.load_path:
+#         raise argparse.ArgumentError('Missing required argument --load_path')
 
-    return args
+#     return args
 
 
 def add_common_args(parser):
     """Add arguments common to all 3 scripts: setup.py, train.py, test.py"""
     parser.add_argument('--train_record_file',
                         type=str,
-                        default='./data/train.npz')
+                        default='./glove_data/train.npz')
     parser.add_argument('--dev_record_file',
                         type=str,
-                        default='./data/dev.npz')
-    parser.add_argument('--test_record_file',
-                        type=str,
-                        default='./data/test.npz')
+                        default='./glove_data/dev.npz')
     parser.add_argument('--word_emb_file',
                         type=str,
-                        default='./data/word_emb.json')
+                        default='./glove_data/data/word_emb.json')
     parser.add_argument('--char_emb_file',
                         type=str,
-                        default='./data/char_emb.json')
+                        default='./glove_data/data/char_emb.json')
     parser.add_argument('--train_eval_file',
                         type=str,
-                        default='./data/train_eval.json')
+                        default='./glove_data/data/train_eval.json')
     parser.add_argument('--dev_eval_file',
                         type=str,
-                        default='./data/dev_eval.json')
-    parser.add_argument('--test_eval_file',
-                        type=str,
-                        default='./data/test_eval.json')
+                        default='./glove_data/data/dev_eval.json')
 
 
 def add_train_test_args(parser):
@@ -227,7 +279,7 @@ def add_train_test_args(parser):
                         help='Base directory for saving information.')
     parser.add_argument('--batch_size',
                         type=int,
-                        default=64,
+                        default=32,
                         help='Batch size per GPU. Scales automatically when \
                               multiple GPUs are available.')
     parser.add_argument('--use_squad_v2',

@@ -2,3 +2,5 @@
 **/.vscode
 **/.idea
 **/checkpoints
+**/data
+**/glove_data
