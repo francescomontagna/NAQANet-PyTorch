@@ -12,7 +12,7 @@ from .args import get_train_args
 
 # TODO
 # Check Mask still workin
-# BIDAF?
+# BIDAF attention layer?
 
 
 class QANet(nn.Module):
@@ -51,10 +51,10 @@ class QANet(nn.Module):
         self.pointer = Pointer(d_model) # forward method return start and end spans
 
 
-    def forward(self, context_batch, question_batch):
+    def forward(self, word_context_batch, word_question_batch, char_context_batch, char_question_batch):
 
-        cb = self.embeddings(context_batch)
-        qb = self.embeddings(question_batch)
+        cb = self.embeddings(word_context_batch, char_context_batch)
+        qb = self.embeddings(word_question_batch, char_question_batch)
 
         # masks for self attention
         c_mask_enc = set_mask(cb, negated=False).to(self.device)

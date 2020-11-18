@@ -6,22 +6,23 @@ Author:
 import numpy as np
 import random
 import torch
+import math
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.optim.lr_scheduler as sched
 import torch.utils.data as data
-import util
 
-from args import get_train_args
 from collections import OrderedDict
 from json import dumps
-from models import BiDAF
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 from ujson import load as json_load
-from util import collate_fn, SQuAD
 
+import stanford_model.util as util
+from stanford_model.util import collate_fn, SQuAD
+from stanford_model.args import get_train_args
+from stanford_model.qanet_char_emb import QANet
 
 def main(args):
     # Set up logging and devices
@@ -56,7 +57,7 @@ def main(args):
 
     # Get model
     log.info('Building model...')
-    model = QANet(word_vectors, device, )
+    model = QANet(device, word_vectors)
     if args.load_path:
         log.info(f'Loading checkpoint from {args.load_path}...')
         model, step = util.load_model(model, args.load_path, args.gpu_ids)
@@ -64,7 +65,7 @@ def main(args):
         step = 0
     model = model.to(device)
     model.train()
-    ema = util.EMA(model, args.ema_decay)
+    ema = util.EMA(model, args.decay)
 
     # Get saver
     saver = util.CheckpointSaver(args.save_dir,
@@ -104,7 +105,7 @@ def main(args):
     log.info('Training...')
     steps_till_eval = args.eval_steps
     epoch = step // len(train_dataset)
-    while epoch != args.num_epochs:
+    while epoch != args.epochs:
         epoch += 1
         log.info(f'Starting epoch {epoch}...')
         with torch.enable_grad(), \
@@ -124,7 +125,7 @@ def main(args):
 
                 # Backward
                 loss.backward()
-                nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
+                nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
                 optimizer.step()
                 scheduler.step(step // batch_size)
                 ema(model, step // batch_size)

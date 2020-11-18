@@ -179,6 +179,10 @@ def get_train_args():
         '--p_dropout',
         default = 0.1, type = float,
         help = 'dropout probability between layers')
+    parser.add_argument('--eval_steps',
+        type=int,
+        default=50000,
+        help='Number of steps between successive evaluations.')
     
     # metrics & checkpoints
     parser.add_argument('--metric_name',
@@ -240,29 +244,33 @@ def add_common_args(parser):
     """Add arguments common to all 3 scripts: setup.py, train.py, test.py"""
     parser.add_argument('--train_record_file',
                         type=str,
-                        default='./glove_data/train.npz')
+                        default='./stanford_model/glove_data/train.npz')
     parser.add_argument('--dev_record_file',
                         type=str,
-                        default='./glove_data/dev.npz')
+                        default='./stanford_model/glove_data/dev.npz')
     parser.add_argument('--word_emb_file',
                         type=str,
                         default='./stanford_model/glove_data/data/word_emb.json')
     parser.add_argument('--char_emb_file',
                         type=str,
-                        default='./glove_data/data/char_emb.json')
+                        default='./stanford_model/glove_data/data/char_emb.json')
     parser.add_argument('--train_eval_file',
                         type=str,
-                        default='./glove_data/data/train_eval.json')
+                        default='./stanford_model/glove_data/data/train_eval.json')
     parser.add_argument('--dev_eval_file',
                         type=str,
-                        default='./glove_data/data/dev_eval.json')
+                        default='./stanford_model/glove_data/data/dev_eval.json')
 
 
 def add_train_test_args(parser):
     """Add arguments common to train.py and test.py"""
+    parser.add_argument('--name',
+                        '-n',
+                        default = 'train', type=str,
+                        help='Name to identify training or test run.')
     parser.add_argument('--max_ans_len',
                         type=int,
-                        default=15,
+                        default=30,
                         help='Maximum length of a predicted answer.')
     parser.add_argument('--num_workers',
                         type=int,
