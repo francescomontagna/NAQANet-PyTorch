@@ -19,14 +19,16 @@ class QANet(nn.Module):
     def __init__(self, 
                  device,
                  word_embeddings,
+                 char_embeddings,
                  w_emb_size:int = 300,
-                 d_model:int = 128,
+                 c_emb_size:int = 64,
+                 hidden_size:int = 128,
                  c_max_len: int = 800,
                  q_max_len: int = 100,
                  p_dropout: float = 0.1,
                  num_heads : int = 8): # need info for padding?
         """
-        :param d_model: hidden size of representation vectors
+        :param hidden_size: hidden size of representation vectors
         :param q_max_len: max number of words in a question sentence
         :param c_max_len: max number of words in a context sentence
         :param p_dropout: dropout probability
@@ -34,27 +36,27 @@ class QANet(nn.Module):
         super(QANet, self).__init__()
 
         self.device = device
-        self.d_model = d_model
+        self.hidden_size = hidden_size
+        self.p_dropout = p_dropout
         self.dropout_layer = torch.nn.Dropout(p=p_dropout) if p_dropout > 0 else lambda x: x
 
-        self.embeddings = Embedding(word_embeddings, d_model, p_dropout)
+        self.embeddings = Embedding(word_embeddings, char_embeddings, hidden_size, w_emb_size, c_emb_size, p_dropout)
 
-        # Notice! Differentiate p_dropout if char embeddings are introduced
-        self.context_encoder = EncoderBlock(device, d_model, c_max_len, num_convs=4, kernel_size=7, p_dropout=p_dropout, num_heads=num_heads)
-        self.question_encoder = EncoderBlock(device, d_model, q_max_len, num_convs=2, kernel_size=5, p_dropout=p_dropout,  num_heads=num_heads)
+        self.context_encoder = EncoderBlock(device, hidden_size, c_max_len, num_convs=4, kernel_size=7, p_dropout=p_dropout, num_heads=num_heads)
+        self.question_encoder = EncoderBlock(device, hidden_size, q_max_len, num_convs=2, kernel_size=5, p_dropout=p_dropout,  num_heads=num_heads)
 
-        self.cq_attention = CQAttention(d_model, p_dropout)
+        self.cq_attention = CQAttention(hidden_size, p_dropout)
 
-        self.modeling_resizing_layer = nn.Linear(4 * d_model, d_model)
-        self.modeling_encoder_layer = EncoderBlock(device, d_model, len_sentence=c_max_len, p_dropout=0.1)
+        self.modeling_resizing_layer = nn.Linear(4 * hidden_size, hidden_size)
+        self.modeling_encoder_layer = EncoderBlock(device, hidden_size, len_sentence=c_max_len, p_dropout=0.1)
 
-        self.pointer = Pointer(d_model) # forward method return start and end spans
+        self.pointer = Pointer(hidden_size) # forward method return start and end spans
 
 
-    def forward(self, word_context_batch, word_question_batch, char_context_batch, char_question_batch):
+    def forward(self, cw_idxs, cc_idxs, qw_idxs, qc_idxs):
 
-        cb = self.embeddings(word_context_batch, char_context_batch)
-        qb = self.embeddings(word_question_batch, char_question_batch)
+        cb = self.embeddings(cw_idxs, cc_idxs)
+        qb = self.embeddings(qw_idxs, qc_idxs)
 
         # masks for self attention
         c_mask_enc = set_mask(cb, negated=False).to(self.device)
@@ -86,7 +88,7 @@ class QANet(nn.Module):
 
 
 if __name__ == "__main__":
-    test = True
+    test = False
 
     if test:
 
@@ -96,7 +98,7 @@ if __name__ == "__main__":
         c_max_len = 7
         wemb_vocab_size = 9
         emb_size = 300
-        d_model = 128
+        hidden_size = 128
         dropout_prob = 0.1
         device = 'cpu'
         args = get_train_args()
