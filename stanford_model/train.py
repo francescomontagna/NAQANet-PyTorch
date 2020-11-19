@@ -32,16 +32,12 @@ def main(args):
     log.info(f'Args: {dumps(vars(args), indent=4, sort_keys=True)}')
     
     # set device
-    if args.use_gpu:
+    if args.use_gpu and torch.cuda.is_available():
         device_id = args.device_id
-        device = torch.device("cuda:{}".format(args.device_id) if torch.cuda.is_available() else "cpu")
+        device = torch.device("cuda:{}".format(args.device_id))
+        print("device is cuda")
     else:
         device = torch.device("cpu")
-
-    n_gpu = torch.cuda.device_count()
-    if torch.cuda.is_available():
-        print("device is cuda, # cuda is: ", n_gpu)
-    else:
         print("device is cpu")
 
     # Set random seed

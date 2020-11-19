@@ -89,6 +89,7 @@ class QANet(nn.Module):
 
 if __name__ == "__main__":
     test = False
+    torch.emp
 
     if test:
 
