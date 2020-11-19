@@ -370,8 +370,8 @@ if __name__ == '__main__':
     # Get command-line args
     args_ = get_setup_args()
 
-    # # Download resources
-    # download(args_)
+    # Download resources
+    download(args_)
 
     # Import spacy language model
     nlp = spacy.blank("en")
