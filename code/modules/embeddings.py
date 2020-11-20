@@ -4,8 +4,9 @@ import torch.nn.functional as F
 
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
-from modules.encoder.highway import Highway
-from modules.encoder.depthwise_conv import DepthwiseSeparableConv
+from code.modules.encoder.highway import Highway
+from code.modules.conv1d import Initialized_Conv1d
+from code.modules.encoder.depthwise_conv import DepthwiseSeparableConv
 
 class Embedding(nn.Module):
     """Embedding layer used by BiDAF, without the character-level component.
@@ -22,10 +23,9 @@ class Embedding(nn.Module):
         self.w_embed = nn.Embedding.from_pretrained(word_vectors)
         self.c_embed = nn.Embedding.from_pretrained(char_vectors, freeze = True)
         self.conv2d = DepthwiseSeparableConv(c_emb_size, c_emb_size, 5, dim=2)
-        self.proj = nn.Linear(w_emb_size + c_emb_size, hidden_size, bias=False)
-        self.hwy = Highway(2, hidden_size)
+        self.resize = Initialized_Conv1d(w_emb_size + c_emb_size, hidden_size, bias=False)
+        self.hwy = Highway(2, hidden_size, p_drop)
 
-    #TODO check, non mi torna il discorso della dimensionalita, soprattutto torch.max
     def forward(self, wx, cx):
         wd_emb = self.w_embed(wx)   # (batch_size, seq_len, word_embed_size)
         ch_emb = self.c_embed(cx)   # (batch_size, seq_len, max_char = 16, char_embed_size)
@@ -38,9 +38,9 @@ class Embedding(nn.Module):
 
         wd_emb = F.dropout(wd_emb, p=self.p_drop, training=self.training)
         wd_emb = wd_emb.transpose(1, 2)
-        emb = torch.cat([wd_emb, ch_emb], dim=1).transpose(1, 2)
-        emb = self.proj(emb)  # (batch_size, seq_len, hidden_size)
-        emb = self.hwy(emb)   # (batch_size, seq_len, hidden_size)
+        emb = torch.cat([wd_emb, ch_emb], dim=1)
+        emb = self.resize(emb)  # (batch_size, hidden_size, seq_len)
+        emb = self.hwy(emb)   # (batch_size, hidden_size, seq_len)
 
-        return emb
+        return emb.transpose(1,2)
 

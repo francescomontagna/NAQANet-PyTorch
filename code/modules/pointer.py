@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
-from modules.utils import mask_logits
+
+from code.modules.utils import mask_logits
 
 
 class Pointer(nn.Module):

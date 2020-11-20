@@ -19,10 +19,10 @@ from tensorboardX import SummaryWriter
 from tqdm import tqdm
 from ujson import load as json_load
 
-import stanford_model.util as util
-from stanford_model.util import collate_fn, SQuAD
-from stanford_model.args import get_train_args
-from stanford_model.qanet_char_emb import QANet
+import code.util as util
+from code.util import collate_fn, SQuAD
+from code.args import get_train_args
+from code.model.qanet import QANet
 
 def main(args):
     # Set up logging and devices
@@ -32,10 +32,11 @@ def main(args):
     log.info(f'Args: {dumps(vars(args), indent=4, sort_keys=True)}')
     
     # set device
+
     if args.use_gpu and torch.cuda.is_available():
-        device_id = args.device_id
-        device = torch.device("cuda:{}".format(args.device_id))
-        print("device is cuda")
+        device = torch.device("cuda:{}".format(args.gpu_ids[0]))
+        args.batch_size *= max(1, len(args.gpu_ids))
+        print(f"device is cuda: gpu_ids = {args.gpu_ids}")
     else:
         device = torch.device("cpu")
         print("device is cpu")
@@ -60,6 +61,8 @@ def main(args):
         model, step = util.load_model(model, args.load_path, args.gpu_ids)
     else:
         step = 0
+    
+    model = nn.DataParallel(model, args.gpu_ids)
     model = model.to(device)
     model.train()
     ema = util.EMA(model, args.decay)

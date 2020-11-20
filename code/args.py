@@ -159,9 +159,12 @@ def get_train_args():
         default=False, action='store_true',
         help='whether or not train on gpu')
     parser.add_argument(
-        '--device_id',
-        default=-1, type = int,
-        help = 'device id for gpu training')
+        '-g',
+        '--gpu_ids',
+        type = int,
+        action='append',
+        help = 'gpu ids')
+
 
     # train & evaluate
     parser.add_argument(
@@ -241,22 +244,22 @@ def add_common_args(parser):
     """Add arguments common to all 3 scripts: setup.py, train.py, test.py"""
     parser.add_argument('--train_record_file',
                         type=str,
-                        default='/data/train.npz')
+                        default=os.path.join(cwd + '/data/train.npz'))
     parser.add_argument('--dev_record_file',
                         type=str,
-                        default='/data/dev.npz')
+                        default=os.path.join(cwd + '/data/dev.npz'))
     parser.add_argument('--word_emb_file',
                         type=str,
-                        default='/data/word_emb.json')
+                        default=os.path.join(cwd + '/data/word_emb.json'))
     parser.add_argument('--char_emb_file',
                         type=str,
-                        default='/data/char_emb.json')
+                        default=os.path.join(cwd + '/data/char_emb.json'))
     parser.add_argument('--train_eval_file',
                         type=str,
-                        default='/data/train_eval.json')
+                        default=os.path.join(cwd + '/data/train_eval.json'))
     parser.add_argument('--dev_eval_file',
                         type=str,
-                        default='/data/dev_eval.json')
+                        default=os.path.join(cwd + '/data/dev_eval.json'))
 
 
 def add_train_test_args(parser):

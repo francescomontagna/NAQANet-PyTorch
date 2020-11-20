@@ -2,7 +2,7 @@ import torch
 import  torch.nn as nn
 import torch.nn.functional as F
 import math
-from modules.utils import mask_logits
+from code.modules.utils import mask_logits
 
 # Implementa anche il quarto layer! Vedi infatti cosa ritorna :-)
 class CQAttention(nn.Module):

@@ -1,23 +1,26 @@
 import torch
 import torch.nn as nn
 import math
-from torch.utils.data import DataLoader # The embedding retrieval is already done in dataset __getitem__ method
 import os
 import pandas as pd
-from sample.bangliu import EncoderBlock as EB
-from modules.encoder.depthwise_conv import DepthwiseSeparableConv
-from modules.encoder.highway import Highway
-from modules.encoder.residual_with_layer_dropout import ResidualWithLayerDropout
+
+from torch.utils.data import DataLoader
+
+from sample.bangliu import EncoderBlock as EB # remove
+from code.modules.encoder.depthwise_conv import DepthwiseSeparableConv
+from code.modules.encoder.highway import Highway
+from code.modules.encoder.residual_with_layer_dropout import ResidualWithLayerDropout
+from code.modules.conv1d import Initialized_Conv1d
+from code.modules.utils import set_mask
 from sample.sample_vocab import SampleVocab
 from sample.sample_dataset import MultilingualDataset, generate_batch
-from modules.utils import set_mask
 
 # Note: see https://github.com/allenai/allennlp-reading-comprehension/blob/master/allennlp_rc/eval/drop_eval.py for pre processing
 
 class PositionalEncoding(nn.Module):  # is this model wrapped in recurrent structure?
-    def __init__(self, device, d_model, max_len=300):
+    def __init__(self, device, hidden_size, max_len=300):
         """
-        :param d_model: dimension of the embedding (after 1st convolution, that bring emb_size from 300 to 128)
+        :param hidden_size: dimension of the embedding (after 1st convolution, that bring emb_size from 300 to 128)
         :param p_dropout: dropout probability
         :param max_len: max length of the sentence sequence
 
@@ -26,32 +29,32 @@ class PositionalEncoding(nn.Module):  # is this model wrapped in recurrent struc
         super(PositionalEncoding, self).__init__()
 
         # Computed once for all. See "Attention is all you need for reference"
-        self.pos_encoding = torch.zeros((max_len, d_model))  # max_len x d_model matrix
+        self.pos_encoding = torch.zeros((max_len, hidden_size))  # max_len x hidden_size matrix
         position = torch.arange(0, max_len)  # variable part of the encoding
 
-        div_term = torch.exp(torch.arange(0, d_model, 2) *
-                             -(math.log(10000.0) / d_model))
+        div_term = torch.exp(torch.arange(0, hidden_size, 2) *
+                             -(math.log(10000.0) / hidden_size))
         self.pos_encoding[:, 0::2] = torch.sin(torch.transpose(position.unsqueeze(0), 0, 1) * div_term)
         self.pos_encoding[:, 1::2] = torch.cos(torch.transpose(position.unsqueeze(0), 0, 1) * div_term)
 
-        self.pos_encoding = self.pos_encoding.unsqueeze(0).to(device)
+        self.pos_encoding = self.pos_encoding.unsqueeze(0)
 
     def forward(self, x):
         """
 
-        :param x: tensor of size batch_size x d_model ( sure? )
+        :param x: tensor of size batch_size x hidden_size ( sure? )
         :return: input tensor encoding positional information
         """
 
-        return x + self.pos_encoding[:, :x.size(1)]  # why requires_grad = False?
+        return x + self.pos_encoding[:, :x.size(1)].to(x.device)  # why requires_grad = False?
 
 
 # https://atcold.github.io/pytorch-Deep-Learning/en/week12/12-3/ ottima spiegazione attention
 # Only for debugging
 class SelfAttention(nn.Module):
-    def __init__(self, d_model, n_heads, dropout):
+    def __init__(self, hidden_size, n_heads, dropout):
         super(SelfAttention, self).__init__()
-        self.self_attention_layer = nn.MultiheadAttention(d_model, n_heads, dropout=dropout)
+        self.self_attention_layer = nn.MultiheadAttention(hidden_size, n_heads, dropout=dropout)
 
     def forward(self, x):
         return self.self_attention_layer(x, x, x, need_weights = True) # per capire x,x,x : https://www.reddit.com/r/pytorch/comments/c2u6g5/pytorch_multihead_attention_module/
@@ -59,27 +62,27 @@ class SelfAttention(nn.Module):
 
 
 class EncoderBlock(nn.Module):
-    def __init__(self, device, d_model:int, len_sentence: int,  num_convs = 4, kernel_size = 7, p_dropout = 0.1, num_heads = 8):
+    def __init__(self, device, hidden_size:int, len_sentence: int,  num_convs = 4, kernel_size = 7, p_dropout = 0.1, num_heads = 8):
         super(EncoderBlock, self).__init__()
 
-        self.d_model = d_model  # size of embeddings of a word
+        self.hidden_size = hidden_size  # size of embeddings in the encoder
         self.len_sentence = len_sentence
         self.dropout = nn.Dropout(p_dropout)
         self.residual_p_dropout = 0.1
 
-        self.pos_enc_layer = PositionalEncoding(device, d_model,
+        self.pos_enc_layer = PositionalEncoding(device, hidden_size,
                                                 len_sentence) # once for every block (verify)
 
-        self.conv_norms = nn.ModuleList([nn.LayerNorm(d_model) for _ in range(num_convs)])
+        self.conv_norms = nn.ModuleList([nn.LayerNorm(hidden_size) for _ in range(num_convs)])
         self.conv_layers = torch.nn.ModuleList()
         for _ in range(num_convs):
             padding = torch.nn.ConstantPad1d(
                 (kernel_size // 2, (kernel_size - 1) // 2), 0
             )
             depthwise_conv = torch.nn.Conv1d(
-                d_model, d_model, kernel_size, groups=d_model
+                hidden_size, hidden_size, kernel_size, groups=hidden_size
             )
-            pointwise_conv = torch.nn.Conv1d(d_model, d_model, 1)
+            pointwise_conv = torch.nn.Conv1d(hidden_size, hidden_size, 1)
             activation_layer = nn.ReLU()
             self.conv_layers.append(
                 torch.nn.Sequential(
@@ -88,12 +91,12 @@ class EncoderBlock(nn.Module):
             )
         self.residual_with_layer_dropout = ResidualWithLayerDropout(True, self.residual_p_dropout)
 
-        self.self_attention_norm = nn.LayerNorm(d_model) # before self attention
-        self.self_attention = nn.MultiheadAttention(d_model, num_heads, dropout=0.0) # Probably remove p_dropout
+        self.self_attention_norm = nn.LayerNorm(hidden_size) # before self attention
+        self.self_attention = nn.MultiheadAttention(hidden_size, num_heads, dropout=0.0) # Probably remove p_dropout
 
-        self.ff_norm = nn.LayerNorm(d_model)  # before FFN
-        self.ff_layer = nn.Linear(d_model, d_model)
-
+        self.ff_norm = nn.LayerNorm(hidden_size)  # before FFN
+        self.ff_layer1 = Initialized_Conv1d(hidden_size, hidden_size, relu=True, bias = False)
+        self.ff_layer2 = Initialized_Conv1d(hidden_size, hidden_size, bias = False)
 
 
     def forward(self, x, mask):
@@ -124,7 +127,8 @@ class EncoderBlock(nn.Module):
         )
 
         feedforward_norm_out = self.dropout(self.ff_norm(output))
-        feedforward_out = self.dropout(self.ff_layer(feedforward_norm_out))
+        feedforward_out = self.ff_layer1(feedforward_norm_out.transpose(1,2))
+        feedforward_out = self.dropout(self.ff_layer2(feedforward_out).transpose(1,2))
         sublayer_count += 1
         output = self.residual_with_layer_dropout(
             output, feedforward_out, sublayer_count, total_sublayers
@@ -212,12 +216,12 @@ if __name__ == "__main__":
 
     if test_EncoderBlock:
         emb_size = 300
-        d_model = 128
+        hidden_size = 128
 
         resizing_projection_layer = torch.nn.Linear(emb_size,
-                                                         d_model)  # code says Linear, paper says 1D conv TODO check
-        highway = Highway(2, d_model)
-        encoder = EncoderBlock(d_model, 500)
+                                                         hidden_size)  # code says Linear, paper says 1D conv TODO check
+        highway = Highway(2, hidden_size)
+        encoder = EncoderBlock(hidden_size, 500)
 
         for x, _ in dataset1:
             c_mask = set_mask(x)

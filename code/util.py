@@ -331,7 +331,7 @@ def load_model(model, checkpoint_path, gpu_ids, return_step=True):
     return model
 
 
-def get_available_devices():
+def get_available_devices(gpu_ids):
     """Get IDs of all available GPUs.
     Returns:
         device (torch.device): Main device (GPU 0 or CPU).

@@ -1,18 +1,14 @@
-from modules.encoder.encoder import (EncoderBlock, Highway)
-from modules.pointer import Pointer
-from modules.cq import CQAttention
-from modules.embeddings import Embedding
-
 import torch
 import torch.nn as nn
 
-from modules.utils import set_mask, get_embeddings
-from .util import torch_from_json
-from .args import get_train_args
-
-# TODO
-# Check Mask still workin
-# BIDAF attention layer?
+from code.modules.encoder.encoder import EncoderBlock
+from code.modules.encoder.depthwise_conv import DepthwiseSeparableConv
+from code.modules.pointer import Pointer
+from code.modules.cq_attention import CQAttention
+from code.modules.embeddings import Embedding
+from code.modules.utils import set_mask
+from code.util import torch_from_json
+from code.args import get_train_args
 
 
 class QANet(nn.Module):
