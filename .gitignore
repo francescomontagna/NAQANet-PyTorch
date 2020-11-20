@@ -3,5 +3,5 @@
 **/.idea
 **/checkpoints
 **/data
-**/glove_data
 **/save
+**/env

@@ -1,0 +1,10 @@
+numpy
+torch===1.7.0
+pandas
+nltk
+ujson
+tqdm
+tensorboardX
+argparse
+datetime
+spacy
