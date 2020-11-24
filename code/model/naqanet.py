@@ -9,12 +9,12 @@ from code.modules.embeddings import Embedding
 from code.modules.utils import set_mask
 from code.util import torch_from_json
 from code.args import get_train_args
+from code.model.qanet import QANet
 
 
-class QANet(nn.Module):
+class NAQANet(QANet):
     def __init__(self, 
                  device,
-                 answering_abilities,
                  word_embeddings,
                  char_embeddings,
                  w_emb_size:int = 300,
@@ -24,6 +24,7 @@ class QANet(nn.Module):
                  q_max_len: int = 100,
                  p_dropout: float = 0.1,
                  num_heads : int = 8, 
+                 answering_abilities = ['passage_span_extraction', 'counting', 'addition_subtraction'],
                  max_count = 10): # max number the network can count
         """
         :param hidden_size: hidden size of representation vectors
@@ -31,35 +32,22 @@ class QANet(nn.Module):
         :param c_max_len: max number of words in a context sentence
         :param p_dropout: dropout probability
         """
-        super(QANet, self).__init__()
-
-        self.device = device
-        self.answering_abilities = answering_abilities
-        self.max_count = max_count
-        self.hidden_size = hidden_size
-        self.p_dropout = p_dropout
-        self.dropout_layer = torch.nn.Dropout(p=p_dropout) if p_dropout > 0 else lambda x: x
-
-        self.embeddings = Embedding(word_embeddings, char_embeddings, hidden_size, w_emb_size, c_emb_size, p_dropout)
-
-        self.context_encoder = EncoderBlock(device, hidden_size, c_max_len, num_convs=4, kernel_size=7, p_dropout=p_dropout, num_heads=num_heads)
-
-        # num_comnc = 4 e kernel size = 7 nel paper!
-        self.question_encoder = EncoderBlock(device, hidden_size, q_max_len, num_convs=2, kernel_size=5, p_dropout=p_dropout,  num_heads=num_heads)
-
-        self.cq_attention = CQAttention(hidden_size, p_dropout)
-
-        self.modeling_resizing_layer = nn.Linear(4 * hidden_size, hidden_size)
-
-        # stack di 7, con num_conv = 2 e kernel = 5 nel paper!
-        self.modeling_encoder_layer = EncoderBlock(device, hidden_size, len_sentence=c_max_len, p_dropout=0.1)
-
+        QANet.__init__(
+                word_embeddings,
+                char_embeddings,
+                w_emb_size = 300,
+                c_emb_size = 64,
+                hidden_size = 128,
+                c_max_len = 800,
+                q_max_len = 100,
+                p_dropout = 0.1,
+                num_heads = 8)
 
         # NUMERICALLY AUGMENTED OUTPUT
 
         # pasage and question representations coefficients
-        self.passage_rep = nn.Linear(hidden_size, 1)
-        self.question_rep = nn.Linear(hidden_size, 1)
+        self.passage_weights_layer = nn.Linear(hidden_size, 1)
+        self.question_weights_layer = nn.Linear(hidden_size, 1)
 
         # answer type predictor
         if len(self.answering_abilities) > 1:
@@ -72,51 +60,50 @@ class QANet(nn.Module):
                 nn.Dropout(p = self.p_dropout)
             ) # then, apply a softmax
 
-        if 'count' in self.answering abilities:
-            
+        
+
+        if 'passage_span_extraction' in self.answering_abilities:
+            self.passage_span_start_predictor = nn.Sequential(
+                nn.Linear(hidden_size * 2, hidden_size),
+                nn.ReLu(), 
+                nn.Linear(hidden_size, 1),
+                nn.ReLu()
+            )
+            self.passage_span_end_predictor = FeedForward(
+                nn.Linear(hidden_size * 2, hidden_size),
+                nn.ReLu(), 
+                nn.Linear(hidden_size, 1),
+                nn.ReLu()
+            ) # then, apply a softmax
+
+        if 'counting' in self.answering_abilities:
             self.count_number_predictor = nn.Sequential(
                 nn.Linear(hidden_size, hidden_size),
                 nn.ReLu(), 
                 nn.Dropout(p = self.p_dropout),
                 nn.Linear(hidden_size, self.max_count),
-                nn.ReLu(), 
-                nn.Dropout(p = self.p_dropout)
+                nn.ReLu()
             ) # then, apply a softmax
-
-        if 'passage' in self.answering_abilities:
-            
-
-
+        
+        if 'addition_subtraction' in self.answering_abilities:
+            self.number_sign_predictor = nn.Sequential(
+                nn.Linear(hidden_size*3, hidden_size),
+                nn.ReLu(),
+                nn.Linear(hidden_size, 3),
+                nn.ReLu()
+            )
 
     def forward(self, cw_idxs, cc_idxs, qw_idxs, qc_idxs):
 
-        cb = self.embeddings(cw_idxs, cc_idxs)
-        qb = self.embeddings(qw_idxs, qc_idxs)
+        M0, M1, M2   = QANet.forward(cw_idxs, cc_idxs, qw_idxs, qc_idxs)
 
-        # masks for self attention
-        c_mask_enc = set_mask(cb, negated=False).to(self.device)
-        q_mask_enc = set_mask(qb, negated=False).to(self.device)
+        print(self.passage_aware)
 
-        # masks for CQ attention
-        c_mask_c2q = set_mask(cb, negated=True).to(self.device) # ~c_mask_enc
-        q_mask_c2q = set_mask(qb, negated=True).to(self.device) # ~q_mask_enc
+        # The first modeling layer is used to calculate the vector representation of passage
+        passage_representation = passage_weights_layer(self.passage_aware)
 
-        cb, qb = self.context_encoder(cb, c_mask_enc), self.question_encoder(qb, q_mask_enc)
 
-        X = self.cq_attention(cb, qb, c_mask_c2q, q_mask_c2q)
-
-        modeled_passage_list = [self.modeling_resizing_layer(X)]
-        for _ in range(3):
-            modeled_passage = self.dropout_layer(
-                self.modeling_encoder_layer(modeled_passage_list[-1], c_mask_enc)
-            )
-            modeled_passage_list.append(modeled_passage)
-        # Pop the first one, which is input
-        modeled_passage_list.pop(0)
-
-        span_start, span_end = self.pointer(modeled_passage_list, c_mask_c2q)
-
-        return span_start, span_end
+        pass
 
 
 if __name__ == "__main__":

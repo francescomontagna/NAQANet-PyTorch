@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+from copy import deepcopy
+
 from code.modules.encoder.encoder import EncoderBlock
 from code.modules.encoder.depthwise_conv import DepthwiseSeparableConv
 from code.modules.pointer import Pointer
@@ -44,7 +46,7 @@ class QANet(nn.Module):
         self.cq_attention = CQAttention(hidden_size, p_dropout)
 
         self.modeling_resizing_layer = nn.Linear(4 * hidden_size, hidden_size)
-        self.modeling_encoder_layer = EncoderBlock(device, hidden_size, len_sentence=c_max_len, p_dropout=0.1)
+        self.modeling_encoder_blocks = nn.ModuleList([EncoderBlock(device, hidden_size, len_sentence=c_max_len, p_dropout=0.1) for _ in range(7)])
 
         self.pointer = Pointer(hidden_size) # forward method return start and end spans
 
@@ -65,12 +67,16 @@ class QANet(nn.Module):
         cb, qb = self.context_encoder(cb, c_mask_enc), self.question_encoder(qb, q_mask_enc)
 
         X = self.cq_attention(cb, qb, c_mask_c2q, q_mask_c2q)
+        self.passage_aware_rep = X # careful with copies!
 
+        # TODO debug
         modeled_passage_list = [self.modeling_resizing_layer(X)]
         for _ in range(3):
-            modeled_passage = self.dropout_layer(
-                self.modeling_encoder_layer(modeled_passage_list[-1], c_mask_enc)
-            )
+            modeled_passage = modeled_passage_list[-1]
+            for block in self.modeling_encoder_blocks:
+                modeled_passage = self.dropout_layer(
+                    block(modeled_passage, c_mask_enc)
+                )
             modeled_passage_list.append(modeled_passage)
         # Pop the first one, which is input
         modeled_passage_list.pop(0) # M0, M1, M2
