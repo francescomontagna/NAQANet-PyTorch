@@ -17,8 +17,6 @@ class CQAttention(nn.Module):
 
     def forward(self, C, Q, cmask, qmask):
         ss = []
-        # C = C.transpose(1, 2)
-        # Q = Q.transpose(1, 2) # non lo metto perché il mio encoder restituisce le dimensioni corrette
         cmask = cmask.unsqueeze(2)
         qmask = qmask.unsqueeze(1)
 

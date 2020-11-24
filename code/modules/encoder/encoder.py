@@ -98,7 +98,6 @@ class EncoderBlock(nn.Module):
         self.ff_layer1 = Initialized_Conv1d(hidden_size, hidden_size, relu=True, bias = False)
         self.ff_layer2 = Initialized_Conv1d(hidden_size, hidden_size, bias = False)
 
-
     def forward(self, x, mask):
 
         output = self.pos_enc_layer(x)

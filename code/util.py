@@ -348,7 +348,7 @@ def get_available_devices(gpu_ids):
     return device, gpu_ids
 
 
-def masked_softmax(logits, mask, dim=-1, log_softmax=False):
+def masked_softmax(logits, mask, dim=-1, log_softmax=True):
     """Take the softmax of `logits` over given dimension, and set
     entries to 0 wherever `mask` is 0.
     Args:
@@ -578,7 +578,7 @@ def discretize(p_start, p_end, max_len=15, no_answer=False):
     return start_idxs, end_idxs
 
 
-def convert_tokens(eval_dict, qa_id, y_start_list, y_end_list, no_answer):
+def convert_tokens(eval_dict, qa_id, y_start_list, y_end_list, no_answer=True):
     """Convert predictions to tokens from the context.
     Args:
         eval_dict (dict): Dictionary with eval info for the dataset. This is

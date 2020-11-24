@@ -76,17 +76,6 @@ def min_value_of_dtype(dtype: torch.dtype):
     """
     return info_value_of_dtype(dtype).min
 
-
-def masked_softmax(
-        vector: torch.Tensor,
-        mask: torch.BoolTensor,
-        dim: int = -1):
-    if mask is None:
-        return torch.nn.functional.softmax(vector, dim=dim)
-
-    masked_vector = vector.masked_fill(mask.unsqueeze(1), min_value_of_dtype(vector.dtype))
-    return softmax(masked_vector, dim=dim)
-
 def set_mask(tensor: torch.tensor, negated: bool = False) -> torch.tensor:
     """
     :param tensor:
@@ -103,4 +92,4 @@ def set_mask(tensor: torch.tensor, negated: bool = False) -> torch.tensor:
 
 def mask_logits(target, mask):
     mask = mask.type(torch.float32)
-    return target * mask + (1 - mask) * (-1e30)  # !!!!!!!!!!!!!!!  do we need * mask after target?
+    return target * mask + (1 - mask) * (-1e30)  # do we need * mask after target?

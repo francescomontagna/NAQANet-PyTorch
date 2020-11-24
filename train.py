@@ -20,7 +20,7 @@ from tqdm import tqdm
 from ujson import load as json_load
 
 import code.util as util
-from code.util import collate_fn, SQuAD
+from code.util import collate_fn, SQuAD, convert_tokens, discretize
 from code.args import get_train_args
 from code.model.qanet import QANet
 
@@ -197,13 +197,13 @@ def evaluate(model, data_loader, device, eval_file, max_len, use_squad_v2):
 
             # Get F1 and EM scores
             p1, p2 = log_p1.exp(), log_p2.exp()
-            starts, ends = util.discretize(p1, p2, max_len, use_squad_v2)
+            starts, ends = discretize(p1, p2, max_len, use_squad_v2)
 
             # Log info
             progress_bar.update(batch_size)
             progress_bar.set_postfix(NLL=nll_meter.avg)
 
-            preds, _ = util.convert_tokens(gold_dict,
+            preds, _ = convert_tokens(gold_dict,
                                            ids.tolist(),
                                            starts.tolist(),
                                            ends.tolist(),

@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+from code.util import masked_softmax
 from code.modules.utils import mask_logits
 
 
@@ -21,4 +22,5 @@ class Pointer(nn.Module):
         Y2 = mask_logits(Y2, c_mask)
         span_start_index = self.softmax(Y1)
         span_end_index = self.softmax(Y2)
+        
         return span_start_index, span_end_index
