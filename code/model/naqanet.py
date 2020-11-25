@@ -101,10 +101,20 @@ class NAQANet(QANet):
 
         # The first modeling layer is used to calculate the vector representation of passage
         passage_weights = masked_softmax(self.passage_weights_layer(self.passage_aware_rep).squeeze(-1), self.c_mask_c2q, log_softmax = False)
-        
-        # The second modeling layer is use to calculate the vector representatoin of question
-        # question_representation = 
+        passage_vector_rep = passage_weights.unsqueeze(1).bmm(self.passage_aware_rep).squeeze(1)
+        # The second modeling layer is use to calculate the vector representation of question
+        question_weights = masked_softmax(self.question_weights_layer(self.qb).squeeze(-1), self.q_mask_c2q, log_softmax = False)
+        question_vector_rep = question_weights.unsqueeze(1).bmm(self.qb).squeeze(1)
 
+        if len(self.answering_abilities) > 1:
+            # Shape: (batch_size, number_of_abilities)
+            answer_ability_logits = self.answer_ability_predictor(
+                torch.cat([passage_vector_rep, question_vector_rep], -1)
+            )
+            answer_ability_log_probs = torch.nn.functional.log_softmax(answer_ability_logits, -1)
+            best_answer_ability = torch.argmax(answer_ability_log_probs, 1)
+
+        print(answer_ability_log_probs)
 
         pass
 

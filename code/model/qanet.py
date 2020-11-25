@@ -69,6 +69,7 @@ class QANet(nn.Module):
         self.q_mask_c2q = ~self.q_mask_enc
 
         cb, qb = self.context_encoder(cb, self.c_mask_enc), self.question_encoder(qb, self.q_mask_enc)
+        self.qb = qb # careful to copy
 
         X = self.cq_attention(cb, qb, self.c_mask_c2q, self.q_mask_c2q)
         self.passage_aware_rep = self.modeling_resizing_layer(X)
