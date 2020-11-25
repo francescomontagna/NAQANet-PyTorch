@@ -33,15 +33,16 @@ class NAQANet(QANet):
         :param p_dropout: dropout probability
         """
         QANet.__init__(
-                word_embeddings,
-                char_embeddings,
-                w_emb_size = 300,
-                c_emb_size = 64,
-                hidden_size = 128,
-                c_max_len = 800,
-                q_max_len = 100,
-                p_dropout = 0.1,
-                num_heads = 8)
+            device, 
+            word_embeddings,
+            char_embeddings,
+            w_emb_size,
+            c_emb_size,
+            hidden_size,
+            c_max_len,
+            q_max_len,
+            p_dropout,
+            num_heads)
 
         # NUMERICALLY AUGMENTED OUTPUT
 
