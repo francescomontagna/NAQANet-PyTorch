@@ -7,6 +7,10 @@ import numpy as np
 import random
 import torch
 import math
+import json
+import re
+import time
+
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
@@ -15,6 +19,7 @@ import torch.utils.data as data
 
 from collections import OrderedDict
 from json import dumps
+from words2num import words2num
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 from ujson import load as json_load
@@ -24,6 +29,31 @@ from code.util import collate_fn, SQuAD, convert_tokens, discretize
 from code.args import get_train_args
 from code.model.naqanet import NAQANet
 
+# TODO In realta devo agire sul testo, oerche mancano molti numeri nei word_emb
+def get_number_idxs(word2idx_file: str):
+    """
+    :param word2idx_path: path of word2idxs.json file, mapping word into vocbulary indices
+    """
+    
+    with open(word2idx_file, 'r') as file:
+        data = file.read()
+    word2idx = json.loads(data)
+    
+    number_indices = [] # idx associated to numbers
+    regex = re.compile('[+-]?[0-9]+\.[0-9]+') # for float
+    for key, value in word2idx.items():
+        if key.isdigit() or regex.search(key):
+            number_indices.append(value)
+        else:
+            try:
+                words2num(key)
+                number_indices.append(value)
+            except:
+                pass
+
+    return number_indices
+
+
 def main(args):
     # Set up logging and devices
     args.save_dir = util.get_save_dir(args.save_dir, args.name, training=True)
@@ -32,7 +62,6 @@ def main(args):
     log.info(f'Args: {dumps(vars(args), indent=4, sort_keys=True)}')
     
     # set device
-
     if args.use_gpu and torch.cuda.is_available():
         device = torch.device("cuda:{}".format(args.gpu_ids[0]))
         args.batch_size *= max(1, len(args.gpu_ids))
@@ -47,6 +76,9 @@ def main(args):
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
+
+    # Set list with number indices in the vocabulary. Sorted
+    number_emb_idxs = get_number_idxs(args.word2idx_file)
 
     # Get embeddings
     log.info('Loading embeddings...')
@@ -111,6 +143,11 @@ def main(args):
         with torch.enable_grad(), \
                 tqdm(total=len(train_loader.dataset)) as progress_bar:
             for cw_idxs, cc_idxs, qw_idxs, qc_idxs, y1, y2, ids in train_loader:
+                # Find indices of numbers in the contexts. Shape: (# True values, 2)
+                # start_time = time.time()
+                number_indices = np.argwhere((np.isin(cw_idxs.numpy(),number_emb_idxs)))
+                # print("--- %s seconds ---" % (time.time() - start_time))
+
                 # Setup for forward
                 cw_idxs = cw_idxs.to(device)
                 cc_idxs = cc_idxs.to(device)
@@ -120,7 +157,7 @@ def main(args):
                 optimizer.zero_grad()
 
                 # Forward
-                log_p1, log_p2 = model(cw_idxs, cc_idxs, qw_idxs, qc_idxs)
+                log_p1, log_p2 = model(cw_idxs, cc_idxs, qw_idxs, qc_idxs, number_indices)
                 y1, y2 = y1.to(device), y2.to(device)
                 loss = criterion(log_p1, y1) + criterion(log_p2, y2)
                 loss_val = loss.item()

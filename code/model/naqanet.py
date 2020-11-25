@@ -65,6 +65,9 @@ class NAQANet(QANet):
         
 
         if 'passage_span_extraction' in self.answering_abilities:
+            self.passage_span_extraction_index = self.answering_abilities.index(
+                "passage_span_extraction"
+            )
             self.passage_span_start_predictor = nn.Sequential(
                 nn.Linear(hidden_size * 2, hidden_size),
                 nn.ReLU(), 
@@ -79,6 +82,7 @@ class NAQANet(QANet):
             ) # then, apply a softmax
 
         if 'counting' in self.answering_abilities:
+            self.counting_index = self.answering_abilities.index("counting")
             self.count_number_predictor = nn.Sequential(
                 nn.Linear(hidden_size, hidden_size),
                 nn.ReLU(), 
@@ -88,6 +92,9 @@ class NAQANet(QANet):
             ) # then, apply a softmax
         
         if 'addition_subtraction' in self.answering_abilities:
+            self.addition_subtraction_index = self.answering_abilities.index(
+                "addition_subtraction"
+            )
             self.number_sign_predictor = nn.Sequential(
                 nn.Linear(hidden_size*3, hidden_size),
                 nn.ReLU(),
@@ -95,7 +102,7 @@ class NAQANet(QANet):
                 nn.ReLU()
             )
 
-    def forward(self, cw_idxs, cc_idxs, qw_idxs, qc_idxs):
+    def forward(self, cw_idxs, cc_idxs, qw_idxs, qc_idxs, number_indices):
 
         _, _ = super().forward(cw_idxs, cc_idxs, qw_idxs, qc_idxs)
 
@@ -112,10 +119,28 @@ class NAQANet(QANet):
                 torch.cat([passage_vector_rep, question_vector_rep], -1)
             )
             answer_ability_log_probs = torch.nn.functional.log_softmax(answer_ability_logits, -1)
+            # Shape: (batch_size,)
             best_answer_ability = torch.argmax(answer_ability_log_probs, 1)
 
-        print(answer_ability_log_probs)
+        if "counting" in self.answering_abilities:
+            # Shape: (batch_size, self.max_count)
+            count_number_logits = self.count_number_predictor(passage_vector_rep)
+            count_number_log_probs = torch.nn.functional.log_softmax(count_number_logits, -1) # softmax over possible numbers
 
+            # Info about the best count number prediction
+            # Shape: (batch_size,)
+            best_count_number = torch.argmax(count_number_log_probs, -1) # return the most probable number value
+            best_count_log_prob = torch.gather(
+                count_number_log_probs, 1, best_count_number.unsqueeze(-1)
+            ).squeeze(-1)
+            
+            if len(self.answering_abilities) > 1:
+                best_count_log_prob += answer_ability_log_probs[:, self.counting_index]
+
+        if "addition_subraction" in self.answering_abilities:
+            # find number indices
+            pass
+                
         pass
 
 

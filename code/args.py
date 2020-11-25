@@ -260,6 +260,9 @@ def add_common_args(parser):
     parser.add_argument('--dev_eval_file',
                         type=str,
                         default=os.path.join(cwd + '/data/dev_eval.json'))
+    parser.add_argument('--word2idx_file',
+                        type=str,
+                        default=os.path.join(cwd + '/data/word2idx.json'))
 
 
 def add_train_test_args(parser):
