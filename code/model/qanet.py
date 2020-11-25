@@ -31,12 +31,17 @@ class QANet(nn.Module):
         :param c_max_len: max number of words in a context sentence
         :param p_dropout: dropout probability
         """
-        super(QANet, self).__init__()
+        super().__init__()
 
         self.device = device
         self.hidden_size = hidden_size
         self.p_dropout = p_dropout
         self.dropout_layer = torch.nn.Dropout(p=p_dropout) if p_dropout > 0 else lambda x: x
+
+        # For NAQANet subclass
+        self.modeled_passage_list = None
+        self.passage_aware_rep = None 
+        self.c_mask_enc = self.q_mask_enc = self.c_mask_c2q = self.q_mask_c2q = None
 
         self.embeddings = Embedding(word_embeddings, char_embeddings, hidden_size, w_emb_size, c_emb_size, p_dropout)
 
@@ -46,10 +51,9 @@ class QANet(nn.Module):
         self.cq_attention = CQAttention(hidden_size, p_dropout)
 
         self.modeling_resizing_layer = nn.Linear(4 * hidden_size, hidden_size)
-        self.modeling_encoder_blocks = nn.ModuleList([EncoderBlock(device, hidden_size, len_sentence=c_max_len, p_dropout=0.1) for _ in range(7)])
+        self.modeling_encoder_block = EncoderBlock(device, hidden_size, len_sentence=c_max_len, p_dropout=0.1)
 
-        self.pointer = Pointer(hidden_size) # forward method return start and end spans
-
+        self.pointer = Pointer(hidden_size) # return start and end spans
 
     def forward(self, cw_idxs, cc_idxs, qw_idxs, qc_idxs):
 
@@ -57,34 +61,31 @@ class QANet(nn.Module):
         qb = self.embeddings(qw_idxs, qc_idxs)
 
         # masks for self attention
-        c_mask_enc = torch.zeros_like(cw_idxs) == cw_idxs
-        q_mask_enc = torch.zeros_like(qw_idxs) == qw_idxs
+        self.c_mask_enc = torch.zeros_like(cw_idxs) == cw_idxs
+        self.q_mask_enc = torch.zeros_like(qw_idxs) == qw_idxs
 
-        # masks for CQ attention
-        c_mask_c2q = ~c_mask_enc
-        q_mask_c2q = ~q_mask_enc
+        # masks for CQ attention (opposite of encoder mask simply because of how PyTorch implements nn.MultiAttention)
+        self.c_mask_c2q = ~self.c_mask_enc
+        self.q_mask_c2q = ~self.q_mask_enc
 
-        cb, qb = self.context_encoder(cb, c_mask_enc), self.question_encoder(qb, q_mask_enc)
+        cb, qb = self.context_encoder(cb, self.c_mask_enc), self.question_encoder(qb, self.q_mask_enc)
 
-        X = self.cq_attention(cb, qb, c_mask_c2q, q_mask_c2q)
-        self.passage_aware_rep = X # careful with copies!
+        X = self.cq_attention(cb, qb, self.c_mask_c2q, self.q_mask_c2q)
+        self.passage_aware_rep = self.modeling_resizing_layer(X)
 
-        # TODO debug
+        # TODO stack of 7 encoders
         modeled_passage_list = [self.modeling_resizing_layer(X)]
         for _ in range(3):
-            modeled_passage = modeled_passage_list[-1]
-            for block in self.modeling_encoder_blocks:
-                modeled_passage = self.dropout_layer(
-                    block(modeled_passage, c_mask_enc)
-                )
+            modeled_passage = self.dropout_layer(
+                self.modeling_encoder_block(modeled_passage_list[-1], self.c_mask_enc)
+            )
             modeled_passage_list.append(modeled_passage)
-        # Pop the first one, which is input
-        modeled_passage_list.pop(0) # M0, M1, M2
 
-        span_start, span_end = self.pointer(modeled_passage_list, c_mask_c2q)
-
-        # best_spans = get_best_span(span_start, span_end)
-        # print(best_spans)
+        # Pop the first one, which is input. M0, M1, M2
+        modeled_passage_list.pop(0)
+        
+        self.modeled_passage_list = modeled_passage_list
+        span_start, span_end = self.pointer(modeled_passage_list, self.c_mask_c2q)
 
         return span_start, span_end
 

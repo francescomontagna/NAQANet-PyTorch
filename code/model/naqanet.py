@@ -7,7 +7,7 @@ from code.modules.pointer import Pointer
 from code.modules.cq_attention import CQAttention
 from code.modules.embeddings import Embedding
 from code.modules.utils import set_mask
-from code.util import torch_from_json
+from code.util import torch_from_json, masked_softmax
 from code.args import get_train_args
 from code.model.qanet import QANet
 
@@ -32,7 +32,7 @@ class NAQANet(QANet):
         :param c_max_len: max number of words in a context sentence
         :param p_dropout: dropout probability
         """
-        QANet.__init__(
+        super().__init__(
             device, 
             word_embeddings,
             char_embeddings,
@@ -44,7 +44,9 @@ class NAQANet(QANet):
             p_dropout,
             num_heads)
 
-        # NUMERICALLY AUGMENTED OUTPUT
+        # Implementing numerically augmented output for QANet
+        self.answering_abilities = answering_abilities
+        self.max_count = max_count
 
         # pasage and question representations coefficients
         self.passage_weights_layer = nn.Linear(hidden_size, 1)
@@ -54,54 +56,54 @@ class NAQANet(QANet):
         if len(self.answering_abilities) > 1:
             self.answer_ability_predictor = nn.Sequential(
                 nn.Linear(2*hidden_size, hidden_size),
-                nn.ReLu(), 
+                nn.ReLU(), 
                 nn.Dropout(p = self.p_dropout),
                 nn.Linear(hidden_size, len(self.answering_abilities)),
-                nn.ReLu(), 
+                nn.ReLU(), 
                 nn.Dropout(p = self.p_dropout)
             ) # then, apply a softmax
-
         
 
         if 'passage_span_extraction' in self.answering_abilities:
             self.passage_span_start_predictor = nn.Sequential(
                 nn.Linear(hidden_size * 2, hidden_size),
-                nn.ReLu(), 
+                nn.ReLU(), 
                 nn.Linear(hidden_size, 1),
-                nn.ReLu()
+                nn.ReLU()
             )
-            self.passage_span_end_predictor = FeedForward(
+            self.passage_span_end_predictor = nn.Sequential(
                 nn.Linear(hidden_size * 2, hidden_size),
-                nn.ReLu(), 
+                nn.ReLU(), 
                 nn.Linear(hidden_size, 1),
-                nn.ReLu()
+                nn.ReLU()
             ) # then, apply a softmax
 
         if 'counting' in self.answering_abilities:
             self.count_number_predictor = nn.Sequential(
                 nn.Linear(hidden_size, hidden_size),
-                nn.ReLu(), 
+                nn.ReLU(), 
                 nn.Dropout(p = self.p_dropout),
                 nn.Linear(hidden_size, self.max_count),
-                nn.ReLu()
+                nn.ReLU()
             ) # then, apply a softmax
         
         if 'addition_subtraction' in self.answering_abilities:
             self.number_sign_predictor = nn.Sequential(
                 nn.Linear(hidden_size*3, hidden_size),
-                nn.ReLu(),
+                nn.ReLU(),
                 nn.Linear(hidden_size, 3),
-                nn.ReLu()
+                nn.ReLU()
             )
 
     def forward(self, cw_idxs, cc_idxs, qw_idxs, qc_idxs):
 
-        M0, M1, M2   = QANet.forward(cw_idxs, cc_idxs, qw_idxs, qc_idxs)
-
-        print(self.passage_aware)
+        _, _ = super().forward(cw_idxs, cc_idxs, qw_idxs, qc_idxs)
 
         # The first modeling layer is used to calculate the vector representation of passage
-        passage_representation = passage_weights_layer(self.passage_aware)
+        passage_weights = masked_softmax(self.passage_weights_layer(self.passage_aware_rep).squeeze(-1), self.c_mask_c2q, log_softmax = False)
+        
+        # The second modeling layer is use to calculate the vector representatoin of question
+        # question_representation = 
 
 
         pass
