@@ -1,5 +1,8 @@
 import torch
 import torch.nn as nn
+import numpy as np
+
+from torch.nn.utils.rnn import pad_sequence
 
 from code.modules.encoder.encoder import EncoderBlock
 from code.modules.encoder.depthwise_conv import DepthwiseSeparableConv
@@ -137,50 +140,139 @@ class NAQANet(QANet):
             if len(self.answering_abilities) > 1:
                 best_count_log_prob += answer_ability_log_probs[:, self.counting_index]
 
-        if "addition_subraction" in self.answering_abilities:
-            # find number indices
+        # Sto buttando il mio tempo
+        if "addition_subtraction" in self.answering_abilities:
+            # M3
+            modeled_passage = self.dropout_layer(
+                self.modeling_encoder_block(self.modeled_passage_list[-1], self.c_mask_enc)
+            )
+            self.modeled_passage_list.append(modeled_passage)
+            encoded_passage_for_numbers = torch.cat(
+                [self.modeled_passage_list[0], self.modeled_passage_list[3]], dim=-1
+            )
+
+            # Reshape number indices from (total number indices, 2) to (batch_size, # numbers in longest passage)
+            batch_size = encoded_passage_for_numbers.size(0)
+            formatted_num_idxs = [[] for _ in range(batch_size)]
+            for row in number_indices: # row = [batch_idx, number idx]
+                formatted_num_idxs[row[0]].append(row[1])
+            
+            for i in range(len(formatted_num_idxs)):
+                formatted_num_idxs[i] = torch.tensor(formatted_num_idxs[i])
+
+            padded_num_idxs = pad_sequence(formatted_num_idxs,
+                                            batch_first=True,
+                                            padding_value = -1)
+            
+            # create mask on indices
+            number_mask = padded_num_idxs != -1
+            print(f"number_mask {number_mask}")
+            clamped_number_indices = padded_num_idxs.masked_fill(~number_mask, 0).type(torch.int64)
+            
+
+            if number_mask.size(1) > 0:
+                # Shape: (batch_size, # of numbers in the passage, encoding_dim)
+                encoded_numbers = torch.gather(
+                    encoded_passage_for_numbers,
+                    1,
+                    clamped_number_indices.unsqueeze(-1).expand(
+                        -1, -1, encoded_passage_for_numbers.size(-1)
+                    ),
+                )
+
+                print(clamped_number_indices)
+                print(clamped_number_indices.unsqueeze(-1).expand(\
+                        -1, -1, encoded_passage_for_numbers.size(-1)\
+                    ).size())
+
+                
+                # Shape: (batch_size, # of numbers in the passage)
+                encoded_numbers = torch.cat(
+                    [
+                        encoded_numbers,
+                        passage_vector_rep.unsqueeze(1).repeat(1, encoded_numbers.size(1), 1),
+                    ],
+                    -1,
+                )
+                
+
+                # Shape: (batch_size, # of numbers in the passage, 3)
+                number_sign_logits = self.number_sign_predictor(encoded_numbers)
+                # print(number_sign_logits)
+                number_sign_log_probs = torch.nn.functional.log_softmax(number_sign_logits, -1)
+                
+
+                # Shape: (batch_size, # of numbers in passage).
+                best_signs_for_numbers = torch.argmax(number_sign_log_probs, -1)
+                # For padding numbers, the best sign masked as 0 (not included).
+                best_signs_for_numbers = best_signs_for_numbers.masked_fill(~number_mask, 0)
+                print(f"best_signs_for_numbers: {best_signs_for_numbers}")
+            
+            else: 
+                print("No number in the batch")
+
+
             pass
+
+        
                 
         pass
 
 
 if __name__ == "__main__":
-    test = False
-    torch.emp
+    test = True
 
     if test:
-
-        torch.manual_seed(32)
+        torch.manual_seed(22)
+        np.random.seed(239)
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        wemb_vocab_size = 5000
+        number_emb_idxs = np.random.default_rng().choice(np.arange(1, wemb_vocab_size), size = int(wemb_vocab_size/10), replace = False)
+        wemb_dim = 300
+        cemb_vocab_size = 94
+        cemb_dim = 64
+        d_model = 128
         batch_size = 4
-        q_max_len = 5
-        c_max_len = 7
-        wemb_vocab_size = 9
-        emb_size = 300
-        hidden_size = 128
-        dropout_prob = 0.1
-        device = 'cpu'
-        args = get_train_args()
-        word_embeddings = torch_from_json(args.word_emb_file)
+        q_max_len = 6
+        c_max_len = 10
+        char_dim = 16
 
-        # define model
-        model = QANet(device, word_embeddings)
+        # fake embedding
+        wv_tensor = torch.rand(wemb_vocab_size, wemb_dim)
+        cv_tensor = torch.rand(cemb_vocab_size, cemb_dim)
 
-        # fake dataset
+        # fake input
         question_lengths = torch.LongTensor(batch_size).random_(1, q_max_len)
         question_wids = torch.zeros(batch_size, q_max_len).long()
+        question_cids = torch.zeros(batch_size, q_max_len, char_dim).long()
         context_lengths = torch.LongTensor(batch_size).random_(1, c_max_len)
         context_wids = torch.zeros(batch_size, c_max_len).long()
-
+        context_cids = torch.zeros(batch_size, c_max_len, char_dim).long()
         for i in range(batch_size):
             question_wids[i, 0:question_lengths[i]] = \
                 torch.LongTensor(1, question_lengths[i]).random_(
                     1, wemb_vocab_size)
-
+            question_cids[i, 0:question_lengths[i], :] = \
+                torch.LongTensor(1, question_lengths[i], char_dim).random_(
+                    1, cemb_vocab_size)
             context_wids[i, 0:context_lengths[i]] = \
                 torch.LongTensor(1, context_lengths[i]).random_(
                     1, wemb_vocab_size)
+            context_cids[i, 0:context_lengths[i], :] = \
+                torch.LongTensor(1, context_lengths[i], char_dim).random_(
+                    1, cemb_vocab_size)
 
-        p1, p2 = model(context_wids, question_wids)
+        number_indices = np.argwhere((np.isin(context_wids.numpy(),number_emb_idxs)))
+
+        # define model
+        model = NAQANet(device, wv_tensor, cv_tensor)
+
+        p1, p2 = model(context_wids, context_cids,
+                       question_wids, question_cids, number_indices)
+        print(f"p1 {p1}")
+        print(f"p2 {p2}")
+        print(torch.sum(p1, dim=1))
+        print(torch.sum(p2))
 
         yp1 = torch.argmax(p1, 1)
         yp2 = torch.argmax(p2, 1)
