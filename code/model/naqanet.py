@@ -168,48 +168,49 @@ class NAQANet(QANet):
             number_mask = padded_num_idxs != -1
             print(f"number_mask {number_mask}")
             clamped_number_indices = padded_num_idxs.masked_fill(~number_mask, 0).type(torch.int64)
-            
 
             if number_mask.size(1) > 0:
-                # Shape: (batch_size, # of numbers in the passage, encoding_dim)
-                encoded_numbers = torch.gather(
-                    encoded_passage_for_numbers,
-                    1,
-                    clamped_number_indices.unsqueeze(-1).expand(
-                        -1, -1, encoded_passage_for_numbers.size(-1)
-                    ),
-                )
-
-                print(clamped_number_indices)
-                print(clamped_number_indices.unsqueeze(-1).expand(\
-                        -1, -1, encoded_passage_for_numbers.size(-1)\
-                    ).size())
-
-                
-                # Shape: (batch_size, # of numbers in the passage)
+                # Shape: (batch_size, max_len_context, 3*hidden_size)
                 encoded_numbers = torch.cat(
                     [
-                        encoded_numbers,
-                        passage_vector_rep.unsqueeze(1).repeat(1, encoded_numbers.size(1), 1),
+                        encoded_passage_for_numbers,
+                        passage_vector_rep.unsqueeze(1).repeat(1, encoded_passage_for_numbers.size(1), 1),
                     ],
                     -1,
                 )
-                
 
-                # Shape: (batch_size, # of numbers in the passage, 3)
+                # Shape: (batch_size, max # number in passages, 3*hidden_size)
+                encoded_numbers = torch.gather(encoded_numbers,
+                    1,
+                    clamped_number_indices.unsqueeze(-1).expand(
+                        -1, -1, encoded_numbers.size(-1)
+                    ))
+
                 number_sign_logits = self.number_sign_predictor(encoded_numbers)
-                # print(number_sign_logits)
                 number_sign_log_probs = torch.nn.functional.log_softmax(number_sign_logits, -1)
-                
+                # print(number_sign_log_probs)
 
                 # Shape: (batch_size, # of numbers in passage).
                 best_signs_for_numbers = torch.argmax(number_sign_log_probs, -1)
                 # For padding numbers, the best sign masked as 0 (not included).
                 best_signs_for_numbers = best_signs_for_numbers.masked_fill(~number_mask, 0)
-                print(f"best_signs_for_numbers: {best_signs_for_numbers}")
-            
-            else: 
-                print("No number in the batch")
+                # Shape: (batch_size, # of numbers in passage)
+                best_signs_log_probs = torch.gather(
+                    number_sign_log_probs, 2, best_signs_for_numbers.unsqueeze(-1)
+                ).squeeze(-1)
+                # the probs of the masked positions should be 1 so that it will not affect the joint probability
+                # TODO: this is not quite right, since if there are many numbers in the passage,
+                # TODO: the joint probability would be very small.
+                best_signs_log_probs = best_signs_log_probs.masked_fill(~number_mask, 0)
+                # Shape: (batch_size,)
+                best_combination_log_prob = best_signs_log_probs.sum(-1)
+                if len(self.answering_abilities) > 1:
+                    best_combination_log_prob += answer_ability_log_probs[
+                        :, self.addition_subtraction_index
+                    ]
+
+                else:
+                    print("No numbers in the batch")
 
 
             pass
@@ -224,10 +225,10 @@ if __name__ == "__main__":
 
     if test:
         torch.manual_seed(22)
-        np.random.seed(239)
+        np.random.seed(2)
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         wemb_vocab_size = 5000
-        number_emb_idxs = np.random.default_rng().choice(np.arange(1, wemb_vocab_size), size = int(wemb_vocab_size/10), replace = False)
+        number_emb_idxs = np.random.default_rng().choice(np.arange(1, wemb_vocab_size), size = int(wemb_vocab_size/4), replace = False)
         wemb_dim = 300
         cemb_vocab_size = 94
         cemb_dim = 64
