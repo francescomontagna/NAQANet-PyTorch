@@ -10,9 +10,10 @@ from code.modules.pointer import Pointer
 from code.modules.cq_attention import CQAttention
 from code.modules.embeddings import Embedding
 from code.modules.utils import set_mask
-from code.util import torch_from_json, masked_softmax
+from code.util import torch_from_json, masked_softmax, get_best_span
 from code.args import get_train_args
 from code.model.qanet import QANet
+from code import util
 
 
 class NAQANet(QANet):
@@ -107,7 +108,7 @@ class NAQANet(QANet):
 
     def forward(self, cw_idxs, cc_idxs, qw_idxs, qc_idxs, number_indices):
 
-        _, _ = super().forward(cw_idxs, cc_idxs, qw_idxs, qc_idxs)
+        span_start_logits, span_end_logits = super().forward(cw_idxs, cc_idxs, qw_idxs, qc_idxs)
 
         # The first modeling layer is used to calculate the vector representation of passage
         passage_weights = masked_softmax(self.passage_weights_layer(self.passage_aware_rep).squeeze(-1), self.c_mask_c2q, log_softmax = False)
@@ -132,7 +133,7 @@ class NAQANet(QANet):
 
             # Info about the best count number prediction
             # Shape: (batch_size,)
-            best_count_number = torch.argmax(count_number_log_probs, -1) # return the most probable number value
+            best_count_number = torch.argmax(count_number_log_probs, -1) # most probable numeric value
             best_count_log_prob = torch.gather(
                 count_number_log_probs, 1, best_count_number.unsqueeze(-1)
             ).squeeze(-1)
@@ -151,7 +152,7 @@ class NAQANet(QANet):
                 [self.modeled_passage_list[0], self.modeled_passage_list[3]], dim=-1
             )
 
-            # Reshape number indices from (total number indices, 2) to (batch_size, # numbers in longest passage)
+            # Reshape number indices to (batch_size, # numbers in longest passage)
             batch_size = encoded_passage_for_numbers.size(0)
             formatted_num_idxs = [[] for _ in range(batch_size)]
             for row in number_indices: # row = [batch_idx, number idx]
@@ -166,8 +167,9 @@ class NAQANet(QANet):
             
             # create mask on indices
             number_mask = padded_num_idxs != -1
-            print(f"number_mask {number_mask}")
-            clamped_number_indices = padded_num_idxs.masked_fill(~number_mask, 0).type(torch.int64)
+            # print(f"number_mask {number_mask}")
+            clamped_number_indices = padded_num_idxs.masked_fill(~number_mask, 0).type(torch.int64).to(self.device)
+            number_mask = number_mask.to(self.device)
 
             if number_mask.size(1) > 0:
                 # Shape: (batch_size, max_len_context, 3*hidden_size)
@@ -188,22 +190,31 @@ class NAQANet(QANet):
 
                 number_sign_logits = self.number_sign_predictor(encoded_numbers)
                 number_sign_log_probs = torch.nn.functional.log_softmax(number_sign_logits, -1)
-                # print(number_sign_log_probs)
+                # print(f"number_sign_log_probs 1: {number_sign_log_probs}")
 
                 # Shape: (batch_size, # of numbers in passage).
                 best_signs_for_numbers = torch.argmax(number_sign_log_probs, -1)
                 # For padding numbers, the best sign masked as 0 (not included).
                 best_signs_for_numbers = best_signs_for_numbers.masked_fill(~number_mask, 0)
+
+                # TODO fix or remove
+                # print(f"best_signs_for_numbers 2: {best_signs_for_numbers}") # Per qualche motivo se True mi restituisce sempre 2
+
+
                 # Shape: (batch_size, # of numbers in passage)
                 best_signs_log_probs = torch.gather(
                     number_sign_log_probs, 2, best_signs_for_numbers.unsqueeze(-1)
                 ).squeeze(-1)
+
                 # the probs of the masked positions should be 1 so that it will not affect the joint probability
                 # TODO: this is not quite right, since if there are many numbers in the passage,
                 # TODO: the joint probability would be very small.
                 best_signs_log_probs = best_signs_log_probs.masked_fill(~number_mask, 0)
+                # print(f"best_signs_log_probs 3: {best_signs_log_probs}")
+
                 # Shape: (batch_size,)
                 best_combination_log_prob = best_signs_log_probs.sum(-1)
+                
                 if len(self.answering_abilities) > 1:
                     best_combination_log_prob += answer_ability_log_probs[
                         :, self.addition_subtraction_index
@@ -212,13 +223,56 @@ class NAQANet(QANet):
                 else:
                     print("No numbers in the batch")
 
-
-            pass
-
         
-                
-        pass
+        # Both paper and code od naqanet implementation differ from paper and code of qanet...
+        if "passage_span_extraction" in self.answering_abilities:
+            # Shape: (batch_size, passage_length, modeling_dim * 2))
+            passage_for_span_start = torch.cat(
+                [self.modeled_passage_list[0], self.modeled_passage_list[1]], dim=-1
+            )
+            # Shape: (batch_size, passage_length)
+            passage_span_start_logits = self.passage_span_start_predictor(
+                passage_for_span_start
+            ).squeeze(-1)
+            # Shape: (batch_size, passage_length, modeling_dim * 2)
+            passage_for_span_end = torch.cat(
+                [self.modeled_passage_list[0], self.modeled_passage_list[2]], dim=-1
+            )
+            # Shape: (batch_size, passage_length)
+            passage_span_end_logits = self.passage_span_end_predictor(
+                passage_for_span_end
+            ).squeeze(-1)
+            # Shape: (batch_size, passage_length)
+            passage_span_start_log_probs = util.masked_log_softmax(
+                passage_span_start_logits, self.c_mask_c2q
+            )
+            passage_span_end_log_probs = util.masked_log_softmax(
+                passage_span_end_logits, self.c_mask_c2q
+            )
 
+            # Info about the best passage span prediction
+            passage_span_start_logits = passage_span_start_logits.\
+                masked_fill(~self.c_mask_c2q, 1e-30)
+            passage_span_end_logits = passage_span_end_logits.\
+                masked_fill(~self.c_mask_c2q, 1e-30)
+            
+            # Shape: (batch_size, 2)
+            best_passage_span = get_best_span(passage_span_start_logits, passage_span_end_logits)
+            print(f"Best_passage_span according to allen: {best_passage_span}")
+            # Shape: (batch_size, 2)
+            best_passage_start_log_probs = torch.gather(
+                passage_span_start_log_probs, 1, best_passage_span[:, 0].unsqueeze(-1)
+            ).squeeze(-1)
+            best_passage_end_log_probs = torch.gather(
+                passage_span_end_log_probs, 1, best_passage_span[:, 1].unsqueeze(-1)
+            ).squeeze(-1)
+            # Shape: (batch_size,)
+            best_passage_span_log_prob = best_passage_start_log_probs + best_passage_end_log_probs
+            if len(self.answering_abilities) > 1:
+                best_passage_span_log_prob += answer_ability_log_probs[
+                    :, self.passage_span_extraction_index
+                ]
+        
 
 if __name__ == "__main__":
     test = True
@@ -266,6 +320,7 @@ if __name__ == "__main__":
         number_indices = np.argwhere((np.isin(context_wids.numpy(),number_emb_idxs)))
 
         # define model
+        device = 'cpu'
         model = NAQANet(device, wv_tensor, cv_tensor)
 
         p1, p2 = model(context_wids, context_cids,

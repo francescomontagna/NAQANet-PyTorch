@@ -368,6 +368,59 @@ def masked_softmax(logits, mask, dim=-1, log_softmax=True):
 
     return probs
 
+def masked_log_softmax(vector: torch.Tensor, mask: torch.BoolTensor, dim: int = -1) -> torch.Tensor:
+    """
+    `torch.nn.functional.log_softmax(vector)` does not work if some elements of `vector` should be
+    masked.  This performs a log_softmax on just the non-masked portions of `vector`.  Passing
+    `None` in for the mask is also acceptable; you'll just get a regular log_softmax.
+    `vector` can have an arbitrary number of dimensions; the only requirement is that `mask` is
+    broadcastable to `vector's` shape.  If `mask` has fewer dimensions than `vector`, we will
+    unsqueeze on dimension 1 until they match.  If you need a different unsqueezing of your mask,
+    do it yourself before passing the mask into this function.
+    In the case that the input vector is completely masked, the return value of this function is
+    arbitrary, but not `nan`.  You should be masking the result of whatever computation comes out
+    of this in that case, anyway, so the specific values returned shouldn't matter.  Also, the way
+    that we deal with this case relies on having single-precision floats; mixing half-precision
+    floats with fully-masked vectors will likely give you `nans`.
+    If your logits are all extremely negative (i.e., the max value in your logit vector is -50 or
+    lower), the way we handle masking here could mess you up.  But if you've got logit values that
+    extreme, you've got bigger problems than this.
+    """
+    if mask is not None:
+        while mask.dim() < vector.dim():
+            mask = mask.unsqueeze(1)
+        # vector + mask.log() is an easy way to zero out masked elements in logspace, but it
+        # results in nans when the whole vector is masked.  We need a very small value instead of a
+        # zero in the mask for these cases.
+        vector = vector + (mask + 1e-30).log()
+    return torch.nn.functional.log_softmax(vector, dim=dim)
+
+def get_best_span(span_start_logits: torch.Tensor, span_end_logits: torch.Tensor) -> torch.Tensor:
+    """
+    We call the inputs "logits" - they could either be unnormalized logits or normalized log
+    probabilities.  A log_softmax operation is a constant shifting of the entire logit
+    vector, so taking an argmax over either one gives the same result.
+    """
+    if span_start_logits.dim() != 2 or span_end_logits.dim() != 2:
+        raise ValueError("Input shapes must be (batch_size, passage_length)")
+    batch_size, passage_length = span_start_logits.size()
+    device = span_start_logits.device
+    # (batch_size, passage_length, passage_length)
+    span_log_probs = span_start_logits.unsqueeze(2) + span_end_logits.unsqueeze(1)
+    # Only the upper triangle of the span matrix is valid; the lower triangle has entries where
+    # the span ends before it starts.
+    span_log_mask = torch.triu(torch.ones((passage_length, passage_length), device=device)).log()
+    valid_span_log_probs = span_log_probs + span_log_mask
+
+    # Here we take the span matrix and flatten it, then find the best span using argmax.  We
+    # can recover the start and end indices from this flattened list using simple modular
+    # arithmetic.
+    # (batch_size, passage_length * passage_length)
+    best_spans = valid_span_log_probs.view(batch_size, -1).argmax(-1)
+    span_start_indices = best_spans // passage_length
+    span_end_indices = best_spans % passage_length
+    return torch.stack([span_start_indices, span_end_indices], dim=-1)
+
 
 def visualize(tbx, pred_dict, eval_path, step, split, num_visuals):
     """Visualize text examples to TensorBoard.
