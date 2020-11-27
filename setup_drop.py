@@ -1,40 +1,75 @@
+import spacy
+import ujson as json
+import string
+import itertools
+
 from word2number.w2n import word_to_num
 from collections import defaultdict
 from typing import Dict, List, Union, Tuple, Any
+from collections import Counter
+from tqdm import tqdm
+
+
+
+WORD_NUMBER_MAP = {
+    "zero": 0,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "thirteen": 13,
+    "fourteen": 14,
+    "fifteen": 15,
+    "sixteen": 16,
+    "seventeen": 17,
+    "eighteen": 18,
+    "nineteen": 19,
+}
+
+IGNORED_TOKENS = {"a", "an", "the"}
+STRIPPED_CHARACTERS = string.punctuation + "".join(["‘", "’", "´", "`", "_"])
 
 
 # Removed date, since we do not need it
-    def extract_answer_info_from_annotation(
-        answer_annotation: Dict[str, Any]
+def extract_answer_info_from_annotation(
+    answer_annotation: Dict[str, Any]
     ) -> Tuple[str, List[str]]:
-        answer_type = None
-        if answer_annotation["spans"]:
-            answer_type = "spans"
-        elif answer_annotation["number"]:
-            answer_type = "number"
-        elif any(answer_annotation["date"].values()):
-            answer_type = "date"
+    answer_type = None
+    if answer_annotation["spans"]:
+        answer_type = "spans"
+    elif answer_annotation["number"]:
+        answer_type = "number"
+    elif any(answer_annotation["date"].values()):
+        answer_type = "date"
 
-        answer_content = answer_annotation[answer_type] if answer_type is not None else None
+    answer_content = answer_annotation[answer_type] if answer_type is not None else None
 
-        answer_texts: List[str] = []
-        if answer_type is None:  # No answer
-            pass
-        elif answer_type == "spans":
-            # answer_content is a list of string in this case
-            answer_texts = answer_content
-        elif answer_type == "date":
-            # answer_content is a dict with "month", "day", "year" as the keys
-            date_tokens = [
-                answer_content[key]
-                for key in ["month", "day", "year"]
-                if key in answer_content and answer_content[key]
-            ]
-            answer_texts = date_tokens
-        elif answer_type == "number":
-            # answer_content is a string of number
-            answer_texts = [answer_content]
-        return answer_type, answer_texts
+    answer_texts: List[str] = []
+    if answer_type is None:  # No answer
+        pass
+    elif answer_type == "spans":
+        # answer_content is a list of string in this case
+        answer_texts = answer_content
+    elif answer_type == "date":
+        # answer_content is a dict with "month", "day", "year" as the keys
+        date_tokens = [
+            answer_content[key]
+            for key in ["month", "day", "year"]
+            if key in answer_content and answer_content[key]
+        ]
+        answer_texts = date_tokens
+    elif answer_type == "number":
+        # answer_content is a string of number
+        answer_texts = [answer_content]
+    return answer_type, answer_texts
 
 
 def convert_word_to_number(word: str, try_to_include_more_numbers=False):
@@ -72,9 +107,31 @@ def convert_word_to_number(word: str, try_to_include_more_numbers=False):
                 number = None
         return number
 
+def find_valid_add_sub_expressions(
+        numbers: List[int], targets: List[int], max_number_of_numbers_to_consider: int = 2
+    ) -> List[List[int]]:
+    valid_signs_for_add_sub_expressions = []
+    # TODO: Try smaller numbers?
+    for number_of_numbers_to_consider in range(2, max_number_of_numbers_to_consider + 1):
+        possible_signs = list(itertools.product((-1, 1), repeat=number_of_numbers_to_consider))
+        for number_combination in itertools.combinations(
+            enumerate(numbers), number_of_numbers_to_consider
+        ):
+            indices = [it[0] for it in number_combination]
+            values = [it[1] for it in number_combination]
+            for signs in possible_signs:
+                eval_value = sum(sign * value for sign, value in zip(signs, values))
+                if eval_value in targets:
+                    labels_for_numbers = [0] * len(numbers)  # 0 represents ``not included''.
+                    for index, sign in zip(indices, signs):
+                        labels_for_numbers[index] = (
+                            1 if sign == 1 else 2
+                        )  # 1 for positive, 2 for negative
+                    valid_signs_for_add_sub_expressions.append(labels_for_numbers)
+    return valid_signs_for_add_sub_expressions
 
 def find_valid_spans(
-    passage_tokens: List[str], answer_text: str # answer texts = tokenized and recomposed answer texts
+    passage_tokens: List[str], answer_texts: List[str] # answer texts = tokenized and recomposed answer texts
 ) -> List[Tuple[int, int]]:
     normalized_tokens = [
         token.lower().strip(STRIPPED_CHARACTERS) for token in passage_tokens
@@ -84,24 +141,27 @@ def find_valid_spans(
         word_positions[token].append(i) # dict telling index at which appears each word in the passage
     
     spans = []
-    answer_tokens = answer_text.lower().strip(STRIPPED_CHARACTERS).split()
-    num_answer_tokens = len(answer_tokens)
-    for span_start in word_positions[answer_tokens[0]]:
-        span_end = span_start  # span_end is _inclusive_
-        answer_index = 1 # to scan answer tokens
-        while answer_index < num_answer_tokens and span_end + 1 < len(normalized_tokens): # normalized tokens are from passage
-            token = normalized_tokens[span_end + 1]
-            if answer_tokens[answer_index].strip(STRIPPED_CHARACTERS) == token:
-                answer_index += 1
-                span_end += 1
-            elif token in IGNORED_TOKENS:
-                span_end += 1
-            else:
-                break
-        if num_answer_tokens == answer_index: # if I fo8und as many consecutive match as I expected, this is a matching passage
-            spans.append((span_start, span_end))
+    for answer_text in answer_texts:
+        answer_tokens = answer_text.lower().strip(STRIPPED_CHARACTERS).split()
+        num_answer_tokens = len(answer_tokens)
+        if answer_tokens[0] not in word_positions:
+            continue
+        for span_start in word_positions[answer_tokens[0]]:
+            span_end = span_start  # span_end is _inclusive_
+            answer_index = 1
+            while answer_index < num_answer_tokens and span_end + 1 < len(normalized_tokens):
+                token = normalized_tokens[span_end + 1]
+                if answer_tokens[answer_index].strip(STRIPPED_CHARACTERS) == token:
+                    answer_index += 1
+                    span_end += 1
+                elif token in IGNORED_TOKENS:
+                    span_end += 1
+                else:
+                    break
+            if num_answer_tokens == answer_index: # if I found as many consecutive match as I expected, this is a matching passage
+                spans.append((span_start, span_end))
     return spans # list of all matching passage slices
-
+        
 
 def find_valid_counts(count_numbers: List[int], targets: List[int]) -> List[int]:
     valid_indices = []
@@ -110,6 +170,9 @@ def find_valid_counts(count_numbers: List[int], targets: List[int]) -> List[int]
             valid_indices.append(index)
     return valid_indices
 
+def word_tokenize(sent):
+    doc = nlp(sent)
+    return [token.text for token in doc]
 
 def convert_idx(text, tokens):
     current = 0
@@ -122,7 +185,6 @@ def convert_idx(text, tokens):
         spans.append((current, current + len(token)))
         current += len(token)
     return spans
-
 
 
 def process_file(filename, data_type, word_counter, char_counter):
@@ -154,62 +216,67 @@ def process_file(filename, data_type, word_counter, char_counter):
                     for char in token:
                         char_counter[char] += 1
                 
-                answers = []
-                for answer_annotation in qa_pair["answer"]:
-                    # answer type: "number" or "span". answer texts: number or list of spans
-                    answer_type, answer_text = extract_answer_info_from_annotation(answer_annotation)
+                answer_annotation = qa_pair['answer']
+                print(f"answer_annotation: {answer_annotation}")
+                # answer type: "number" or "span". answer texts: number or list of spans
+                answer_type, answer_texts = extract_answer_info_from_annotation(answer_annotation)
 
-                    # Tokenize and recompose the answer text in order to find the matching span based on token
-                    answer_tokens = word_tokenize(text)
-                    tokenized_answer_text = " ".join(token for token in answer_tokens)
-                    print(tokenized_answer_text)
+                # Tokenize and recompose the answer text in order to find the matching span based on token
+                tokenized_answer_texts = []
+                for answer_text in answer_texts:
+                    answer_tokens = word_tokenize(answer_text)
+                    tokenized_answer_texts.append(" ".join(token for token in answer_tokens))
+                
+                numbers_in_passage = []
+                number_indices = []
+                for token_index, token in enumerate(passage_tokens):
+                    number = convert_word_to_number(token)
+                    if number is not None:
+                        numbers_in_passage.append(number)
+                        number_indices.append(token_index)
+                numbers_as_tokens = [str(number) for number in numbers_in_passage]
 
-                    s = scisb
+                valid_passage_spans = (
+                find_valid_spans(passage_tokens, tokenized_answer_texts)
+                if tokenized_answer_texts
+                else []
+                )
 
-                    numbers_in_passage = []
-                    number_indices = []
-                    for token_index, token in enumerate(passage_tokens):
-                        number = convert_word_to_number(token)
-                        if number is not None:
-                            numbers_in_passage.append(number)
-                            number_indices.append(token_index)
-                    numbers_as_tokens = [str(number) for number in numbers_in_passage]
-
-                    valid_passage_spans = (
-                    self.find_valid_spans(passage_tokens, tokenized_answer_text)
-                    if tokenized_answer_texts
-                    else []
+                target_numbers = []
+                # `answer_texts` is a list of valid answers.
+                for answer_text in answer_texts:
+                    number = convert_word_to_number(answer_text)
+                    if number is not None:
+                        target_numbers.append(number)
+                valid_signs_for_add_sub_expressions: List[List[int]] = []
+                valid_counts: List[int] = []
+                if answer_type in ["number", "date"]:
+                    valid_signs_for_add_sub_expressions = find_valid_add_sub_expressions(
+                        numbers_in_passage, target_numbers
                     )
+                if answer_type in ["number"]:
+                    # Currently we only support count number 0 ~ 9
+                    numbers_for_count = list(range(10))
+                    valid_counts = find_valid_counts(numbers_for_count, target_numbers)
 
-                    target_numbers = []
-                    # `answer_texts` is a list of valid answers.
-                    for answer_text in answer_texts:
-                        number = self.convert_word_to_number(answer_text)
-                        if number is not None:
-                            target_numbers.append(number)
-                    valid_signs_for_add_sub_expressions: List[List[int]] = []
-                    valid_counts: List[int] = []
-                    if answer_type in ["number", "date"]:
-                        valid_signs_for_add_sub_expressions = self.find_valid_add_sub_expressions(
-                            numbers_in_passage, target_numbers
-                        )
-                    if answer_type in ["number"]:
-                        # Currently we only support count number 0 ~ 9
-                        numbers_for_count = list(range(10))
-                        valid_counts = self.find_valid_counts(numbers_for_count, target_numbers)
+                type_to_answer_map = {
+                    "passage_span": valid_passage_spans,
+                    "addition_subtraction": valid_signs_for_add_sub_expressions,
+                    "counting": valid_counts,
+                }
+                
+                print(type_to_answer_map)
 
-                    type_to_answer_map = {
-                        "passage_span": valid_passage_spans,
-                        "addition_subtraction": valid_signs_for_add_sub_expressions,
-                        "counting": valid_counts,
-                    }
+                answer_info = {
+                    "answer_texts": answer_texts,  # this `answer_texts` will not be used for evaluation
+                    "answer_passage_spans": valid_passage_spans,
+                    "signs_for_add_sub_expressions": valid_signs_for_add_sub_expressions,
+                    "counts": valid_counts,
+                }
 
-                    answer_info = {
-                        "answer_texts": answer_texts,  # this `answer_texts` will not be used for evaluation
-                        "answer_passage_spans": valid_passage_spans,
-                        "signs_for_add_sub_expressions": valid_signs_for_add_sub_expressions,
-                        "counts": valid_counts,
-                    }
+                print(answer_info)
+
+                
 
 
 
@@ -253,4 +320,7 @@ if __name__ == "__main__":
     char_counter = Counter()
     path = "/home/montagna/PyTorch_NAQANet/data/drop/drop_dataset_dev.json"
     type = "dev"
+
+    nlp = spacy.blank("en")
+
     process_file(path, type, word_counter, char_counter)
