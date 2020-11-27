@@ -99,9 +99,9 @@ def process_file(filename, data_type, word_counter, char_counter):
                     "''", '" ').replace("``", '" ')
                 context_tokens = word_tokenize(context)
                 context_chars = [list(token) for token in context_tokens]
-                spans = convert_idx(context, context_tokens)
+                spans = convert_idx(context, context_tokens) # [[0, 3], [3, 10], .... [35, 41]] each element is a token represented as [start_index, end_index]
                 for token in context_tokens:
-                    word_counter[token] += len(para["qas"])
+                    word_counter[token] += len(para["qas"]) # += number of qa pairs ???
                     for char in token:
                         char_counter[char] += len(para["qas"])
                 for qa in para["qas"]:
@@ -114,7 +114,7 @@ def process_file(filename, data_type, word_counter, char_counter):
                         word_counter[token] += 1
                         for char in token:
                             char_counter[char] += 1
-                    y1s, y2s = [], []
+                    y1s, y2s = [], [] # multiple answers to a single question
                     answer_texts = []
                     for answer in qa["answers"]:
                         answer_text = answer["text"]
@@ -148,15 +148,15 @@ def process_file(filename, data_type, word_counter, char_counter):
 def get_embedding(counter, data_type, limit=-1, emb_file=None, vec_size=None, num_vectors=None):
     print(f"Pre-processing {data_type} vectors...")
     embedding_dict = {}
-    filtered_elements = [k for k, v in counter.items() if v > limit]
+    filtered_elements = [k for k, v in counter.items() if v > limit] # word not included if associated to few QA pairs. limit is actually -1
     if emb_file is not None:
         assert vec_size is not None
-        with open(emb_file, "r", encoding="utf-8") as fh:
-            for line in tqdm(fh, total=num_vectors):
+        with open(emb_file, "r", encoding="utf-8") as fh: # open glove/fasttext
+            for line in tqdm(fh, total=num_vectors): # for each line = embedding
                 array = line.split()
                 word = "".join(array[0:-vec_size])
                 vector = list(map(float, array[-vec_size:]))
-                if word in counter and counter[word] > limit:
+                if word in counter and counter[word] > limit: # if the word is in our data, add the embedding to the matrix
                     embedding_dict[word] = vector
         print(f"{len(embedding_dict)} / {len(filtered_elements)} tokens have corresponding {data_type} embedding vector")
     else:
@@ -178,7 +178,7 @@ def get_embedding(counter, data_type, limit=-1, emb_file=None, vec_size=None, nu
     emb_mat = [idx2emb_dict[idx] for idx in range(len(idx2emb_dict))]
     return emb_mat, token2idx_dict
 
-
+# 0 references in 0 files
 def convert_to_features(args, data, word2idx_dict, char2idx_dict, is_test):
     example = {}
     context, question = data
@@ -277,13 +277,13 @@ def build_features(args, examples, data_type, out_file, word2idx_dict, char2idx_
 
         total += 1
 
-        def _get_word(word):
+        def _get_word(word):# return corresponding word index
             for each in (word, word.lower(), word.capitalize(), word.upper()):
                 if each in word2idx_dict:
                     return word2idx_dict[each]
-            return 1
+            return 1 # '--OOV--'
 
-        def _get_char(char):
+        def _get_char(char): # return corresponding char index
             if char in char2idx_dict:
                 return char2idx_dict[char]
             return 1
