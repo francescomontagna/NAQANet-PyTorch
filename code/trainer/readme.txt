@@ -1,1 +1,1 @@
-Old trainer code. Please ignore the content in this folder
+Old trainer code. Please ignore the content of this folder

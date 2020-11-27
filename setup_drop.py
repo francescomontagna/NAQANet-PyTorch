@@ -9,7 +9,7 @@ from typing import Dict, List, Union, Tuple, Any
 from collections import Counter
 from tqdm import tqdm
 
-
+max_count = 100000
 
 WORD_NUMBER_MAP = {
     "zero": 0,
@@ -217,7 +217,6 @@ def process_file(filename, data_type, word_counter, char_counter):
                         char_counter[char] += 1
                 
                 answer_annotation = qa_pair['answer']
-                print(f"answer_annotation: {answer_annotation}")
                 # answer type: "number" or "span". answer texts: number or list of spans
                 answer_type, answer_texts = extract_answer_info_from_annotation(answer_annotation)
 
@@ -255,29 +254,42 @@ def process_file(filename, data_type, word_counter, char_counter):
                         numbers_in_passage, target_numbers
                     )
                 if answer_type in ["number"]:
-                    # Currently we only support count number 0 ~ 9
-                    numbers_for_count = list(range(10))
+                    # Support count number 0 ~ max_count
+                    # Does not support float
+                    numbers_for_count = list(range(max_count))
                     valid_counts = find_valid_counts(numbers_for_count, target_numbers)
 
                 type_to_answer_map = {
                     "passage_span": valid_passage_spans,
-                    "addition_subtraction": valid_signs_for_add_sub_expressions,
+                    # "addition_subtraction": valid_signs_for_add_sub_expressions,
                     "counting": valid_counts,
                 }
                 
-                print(type_to_answer_map)
+                # print(f"Type to answer map: {type_to_answer_map}") 
 
                 answer_info = {
                     "answer_texts": answer_texts,  # this `answer_texts` will not be used for evaluation
                     "answer_passage_spans": valid_passage_spans,
-                    "signs_for_add_sub_expressions": valid_signs_for_add_sub_expressions,
+                    # "signs_for_add_sub_expressions": valid_signs_for_add_sub_expressions,
                     "counts": valid_counts,
                 }
 
-                print(answer_info)
+                # single question answer pair
+                example = {"context_tokens": passage_tokens,
+                            "context_chars": passage_chars,
+                            "ques_tokens": ques_tokens,
+                            "ques_chars": ques_chars,
+                            "number_indices": number_indices,
+                            "answer_info": answer_info
+                            }
 
-                
+                examples.append(example)
 
+                # print(f"Answer info: {answer_info}") 
+                # print("")
+                print(passage_chars)
+
+    return example
 
 
 # Used both for word and char embeddings. # No changes

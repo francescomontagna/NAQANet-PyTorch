@@ -1,3 +1,5 @@
+
+# TODO: turn it into drop
 class SQuAD(data.Dataset):
     """Stanford Question Answering Dataset (SQuAD).
     Each item in the dataset is a tuple with the following entries (in order):
