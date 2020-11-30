@@ -2,14 +2,65 @@ import spacy
 import ujson as json
 import string
 import itertools
+import os
+import numpy as np
 
 from word2number.w2n import word_to_num
 from collections import defaultdict
+from subprocess import run
 from typing import Dict, List, Union, Tuple, Any
 from collections import Counter
 from tqdm import tqdm
 
+from code.args_drop import get_setup_drop_args # TODO put everything in single .py file
+
 max_count = 100000
+
+def download_url(url, output_path, show_progress=True):
+    class DownloadProgressBar(tqdm):
+        def update_to(self, b=1, bsize=1, tsize=None):
+            if tsize is not None:
+                self.total = tsize
+            self.update(b * bsize - self.n)
+
+    if show_progress:
+        # Download with a progress bar
+        with DownloadProgressBar(unit='B', unit_scale=True,
+                                 miniters=1, desc=url.split('/')[-1]) as t:
+            urllib.request.urlretrieve(url,
+                                       filename=output_path,
+                                       reporthook=t.update_to)
+    else:
+        # Simple download with no progress bar
+        urllib.request.urlretrieve(url, output_path)
+
+
+def url_to_data_path(url):
+    return os.path.join('./data/', url.split('/')[-1])
+
+
+def download(args):
+    downloads = [
+        # Can add other downloads here (e.g., other word vectors)
+        ('GloVe word vectors', args.glove_url),
+    ]
+
+    for name, url in downloads:
+        output_path = url_to_data_path(url)
+        if not os.path.exists(output_path):
+            print(f'Downloading {name}...')
+            download_url(url, output_path)
+
+        if os.path.exists(output_path) and output_path.endswith('.zip'):
+            extracted_path = output_path.replace('.zip', '')
+            if not os.path.exists(extracted_path):
+                print(f'Unzipping {name}...')
+                with ZipFile(output_path, 'r') as zip_fh:
+                    zip_fh.extractall(extracted_path)
+
+    print('Downloading spacy language model...')
+    run(['python3', '-m', 'spacy', 'download', 'en'])
+
 
 WORD_NUMBER_MAP = {
     "zero": 0,
@@ -189,6 +240,7 @@ def convert_idx(text, tokens):
 
 def process_file(filename, data_type, word_counter, char_counter):
     print(f"Pre-processing {data_type} examples...")
+    max_c_len =max_q_len =  0
     examples = []
     eval_examples = {}
     total = 0
@@ -199,6 +251,8 @@ def process_file(filename, data_type, word_counter, char_counter):
             passage = passage.replace(
                 "''", '" ').replace("``", '" ')
             passage_tokens = word_tokenize(passage)
+            if len(passage_tokens)  > max_c_len:
+                max_c_len = len(passage_tokens)
             passage_chars = [list(token) for token in passage_tokens]
             spans = convert_idx(passage, passage_tokens) # [[0, 3], [3, 10], .... [35, 41]] each element is a token represented as [start_index, end_index]
             for token in passage_tokens:
@@ -210,6 +264,8 @@ def process_file(filename, data_type, word_counter, char_counter):
                 ques = qa_pair["question"].replace(
                     "''", '" ').replace("``", '" ')
                 ques_tokens = word_tokenize(ques)
+                if len(ques_tokens) > max_q_len:
+                    max_q_len = len(ques_tokens)
                 ques_chars = [list(token) for token in ques_tokens]
                 for token in ques_tokens:
                     word_counter[token] += 1
@@ -261,7 +317,7 @@ def process_file(filename, data_type, word_counter, char_counter):
 
                 type_to_answer_map = {
                     "passage_span": valid_passage_spans,
-                    # "addition_subtraction": valid_signs_for_add_sub_expressions,
+                    "addition_subtraction": valid_signs_for_add_sub_expressions,
                     "counting": valid_counts,
                 }
                 
@@ -270,7 +326,7 @@ def process_file(filename, data_type, word_counter, char_counter):
                 answer_info = {
                     "answer_texts": answer_texts,  # this `answer_texts` will not be used for evaluation
                     "answer_passage_spans": valid_passage_spans,
-                    # "signs_for_add_sub_expressions": valid_signs_for_add_sub_expressions,
+                    "signs_for_add_sub_expressions": valid_signs_for_add_sub_expressions,
                     "counts": valid_counts,
                 }
 
@@ -287,9 +343,9 @@ def process_file(filename, data_type, word_counter, char_counter):
 
                 # print(f"Answer info: {answer_info}") 
                 # print("")
-                print(passage_chars)
+            break 
 
-    return example
+    return examples
 
 
 # Used both for word and char embeddings. # No changes
@@ -306,12 +362,14 @@ def get_embedding(counter, data_type, limit=-1, emb_file=None, vec_size=None, nu
                 vector = list(map(float, array[-vec_size:]))
                 if word in counter and counter[word] > limit: # if the word is in our data, add the embedding to the matrix
                     embedding_dict[word] = vector
+                break
         print(f"{len(embedding_dict)} / {len(filtered_elements)} tokens have corresponding {data_type} embedding vector")
     else:
         assert vec_size is not None
         for token in filtered_elements:
             embedding_dict[token] = [np.random.normal(
                 scale=0.1) for _ in range(vec_size)]
+            break
         print(f"{len(filtered_elements)} tokens have corresponding {data_type} embedding vector")
 
     NULL = "--NULL--"
@@ -327,12 +385,140 @@ def get_embedding(counter, data_type, limit=-1, emb_file=None, vec_size=None, nu
     return emb_mat, token2idx_dict
 
 
-if __name__ == "__main__":
+def build_features(args, examples, data_type, out_file, word2idx_dict, char2idx_dict, is_test=False):
+    para_limit = args.test_para_limit if is_test else args.para_limit
+    ques_limit = args.test_ques_limit if is_test else args.ques_limit
+    ans_limit = args.ans_limit
+    char_limit = args.char_limit
+
+    def drop_example(ex, is_test_=False):
+        if is_test_:
+            drop = False
+        else:
+            drop = len(ex["context_tokens"]) > para_limit or \
+                   len(ex["ques_tokens"]) > ques_limit
+
+        return drop
+
+    print(f"Converting {data_type} examples to indices...")
+    total = 0
+    total_ = 0
+    meta = {}
+    context_idxs = []
+    context_char_idxs = []
+    ques_idxs = []
+    ques_char_idxs = []
+    number_idxs = []
+    answers_info = []
+    print(f"Len examples: {len(examples)}")
+    for n, example in tqdm(enumerate(examples)):
+        total_ += 1 # count total number of examples in the dataset
+        if drop_example(example, is_test):
+            continue
+
+        total += 1
+
+        def _get_word(word):# return corresponding word index
+            for each in (word, word.lower(), word.capitalize(), word.upper()):
+                if each in word2idx_dict:
+                    return word2idx_dict[each]
+            return 1 # '--OOV--'
+
+        def _get_char(char): # return corresponding char index
+            if char in char2idx_dict:
+                return char2idx_dict[char]
+            return 1
+
+        context_idx = np.zeros([para_limit], dtype=np.int32)
+        context_char_idx = np.zeros([para_limit, char_limit], dtype=np.int32)
+        ques_idx = np.zeros([ques_limit], dtype=np.int32)
+        ques_char_idx = np.zeros([ques_limit, char_limit], dtype=np.int32)
+
+        for i, token in enumerate(example["context_tokens"]):
+            context_idx[i] = _get_word(token)
+        context_idxs.append(context_idx)
+
+        for i, token in enumerate(example["ques_tokens"]):
+            ques_idx[i] = _get_word(token)
+        ques_idxs.append(ques_idx)
+
+        for i, token in enumerate(example["context_chars"]):
+            for j, char in enumerate(token):
+                if j == char_limit:
+                    break
+                context_char_idx[i, j] = _get_char(char)
+        context_char_idxs.append(context_char_idx)
+
+        for i, token in enumerate(example["ques_chars"]):
+            for j, char in enumerate(token):
+                if j == char_limit:
+                    break
+                ques_char_idx[i, j] = _get_char(char)
+        ques_char_idxs.append(ques_char_idx)
+
+        number_indices = example["number_indices"]
+        annotation = example["answer_info"]
+        number_idxs.append(number_indices)
+        answers_info.append(annotation)
+
+        # for k, v in example.items():
+        #     print(f"({k}, {v})")
+
+    np.savez(out_file,
+             context_idxs=np.array(context_idxs),
+             context_char_idxs=np.array(context_char_idxs),
+             ques_idxs=np.array(ques_idxs),
+             ques_char_idxs=np.array(ques_char_idxs),
+             number_idxs=np.array(number_idxs),
+             answers_info=np.array(answers_info))
+    print(f"Built {total} / {total_} instances of features in total")
+    meta["total"] = total
+    return meta
+
+
+def save(filename, obj, message=None):
+    if message is not None:
+        print(f"Saving {message}...")
+        with open(filename, "w") as fh:
+            json.dump(obj, fh)
+
+
+def pre_process(args):
     word_counter = Counter()
     char_counter = Counter()
-    path = "/home/montagna/PyTorch_NAQANet/data/drop/drop_dataset_dev.json"
-    type = "dev"
+    
+    # process training dataset
+    train_examples = process_file(args.train_file, "train", word_counter, char_counter)
+    word_emb_mat, word2idx_dict = get_embedding(word_counter, "word",
+        emb_file=args.glove_path, vec_size=args.glove_dim, num_vectors=args.glove_num_vecs)
+    char_emb_mat, char2idx_dict = get_embedding(char_counter, "char",
+         emb_file=None, vec_size=args.char_dim)
+
+    # process dev dataset
+    eval_examples = process_file(args.dev_file, "dev", word_counter, char_counter)
+
+    # build golden files
+    build_features(args, train_examples, "train", args.train_record_file, word2idx_dict, char2idx_dict)
+    dev_meta = build_features(args, eval_examples, "dev", args.dev_record_file, word2idx_dict, char2idx_dict)
+
+    # save generated files
+    save(args.word_emb_file, word_emb_mat, message="word embedding")
+    save(args.char_emb_file, char_emb_mat, message="char embedding")
+
+    # TODO decide eval dict form and define it in process_file
+    # save(args.train_eval_file, train_eval, message="train eval")
+    # save(args.dev_eval_file, dev_eval, message="dev eval")
+    save(args.word2idx_file, word2idx_dict, message="word dictionary")
+    save(args.char2idx_file, char2idx_dict, message="char dictionary")
+    save(args.dev_meta_file, dev_meta, message="dev meta")
+
+
+if __name__ == "__main__":
+    # Get command-line args
+    args = get_setup_drop_args()
+
+    # Download resources
+    download(args)
 
     nlp = spacy.blank("en")
-
-    process_file(path, type, word_counter, char_counter)
+    pre_process(args)

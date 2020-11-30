@@ -7,9 +7,10 @@ import argparse
 import os
 
 cwd = os.getcwd()
+data_path = os.path.join(cwd, "data", "drop")
 
 
-def get_setup_args():
+def get_setup_drop_args():
     """Get arguments needed in setup.py."""
     print(f"CWD: {cwd}")
     parser = argparse.ArgumentParser('Download and pre-process SQuAD')
@@ -18,10 +19,10 @@ def get_setup_args():
 
     parser.add_argument('--train_file',
                         type=str,
-                        default=os.path.join(cwd + '/data/1.1/train-v1.1.json'))
+                        default=os.path.join(data_path , 'drop_dataset_train.json'))
     parser.add_argument('--dev_file',
                         type=str,
-                        default=os.path.join(cwd + '/data/1.1/dev-v1.1.json'))
+                        default=os.path.join(data_path , 'drop_dataset_dev.json'))
     parser.add_argument('--glove_url',
                         type=str,
                         default='http://nlp.stanford.edu/data/glove.840B.300d.zip')
@@ -30,19 +31,19 @@ def get_setup_args():
                         default=os.path.join(cwd + '/data/glove.840B.300d/glove.840B.300d.txt'))
     parser.add_argument('--dev_meta_file',
                         type=str,
-                        default=os.path.join(cwd + '/data/dev_meta.json'))
+                        default=os.path.join(data_path, 'dev_meta.json'))
     parser.add_argument('--word2idx_file',
                         type=str,
-                        default=os.path.join(cwd + '/data/word2idx.json'))
+                        default=os.path.join(data_path, 'word2idx.json'))
     parser.add_argument('--char2idx_file',
                         type=str,
-                        default=os.path.join(cwd + '/data/char2idx.json'))
+                        default=os.path.join(data_path, 'char2idx.json'))
     parser.add_argument('--answer_file',
                         type=str,
-                        default=os.path.join(cwd + '/data/answer.json'))
+                        default=os.path.join(data_path, 'answer.json'))
     parser.add_argument('--para_limit',
                         type=int,
-                        default=770,
+                        default=1926,
                         help='Max number of words in a paragraph')
     parser.add_argument('--ques_limit',
                         type=int,
@@ -84,7 +85,6 @@ def get_setup_args():
     args = parser.parse_args()
 
     return args
-
 
 
 def get_train_args():
@@ -245,22 +245,22 @@ def add_common_args(parser):
     """Add arguments common to all 3 scripts: setup.py, train.py, test.py"""
     parser.add_argument('--train_record_file',
                         type=str,
-                        default=os.path.join(cwd + '/data/train.npz'))
+                        default=os.path.join(data_path, 'train.npz'))
     parser.add_argument('--dev_record_file',
                         type=str,
-                        default=os.path.join(cwd + '/data/dev.npz'))
+                        default=os.path.join(data_path,'dev.npz'))
     parser.add_argument('--word_emb_file',
                         type=str,
-                        default=os.path.join(cwd + '/data/word_emb.json'))
+                        default=os.path.join(data_path, 'word_emb.json'))
     parser.add_argument('--char_emb_file',
                         type=str,
-                        default=os.path.join(cwd + '/data/char_emb.json'))
+                        default=os.path.join(data_path, 'char_emb.json'))
     parser.add_argument('--train_eval_file',
                         type=str,
-                        default=os.path.join(cwd + '/data/train_eval.json'))
+                        default=os.path.join(data_path, 'train_eval.json'))
     parser.add_argument('--dev_eval_file',
                         type=str,
-                        default=os.path.join(cwd + '/data/dev_eval.json'))
+                        default=os.path.join(data_path, 'dev_eval.json'))
 
 
 def add_train_test_args(parser):

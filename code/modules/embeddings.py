@@ -21,7 +21,7 @@ class Embedding(nn.Module):
         super(Embedding, self).__init__()
         self.p_drop = p_drop
         self.w_embed = nn.Embedding.from_pretrained(word_vectors)
-        self.c_embed = nn.Embedding.from_pretrained(char_vectors, freeze = True)
+        self.c_embed = nn.Embedding.from_pretrained(char_vectors, freeze = False)
         self.conv2d = DepthwiseSeparableConv(c_emb_size, c_emb_size, 5, dim=2)
         self.resize = Initialized_Conv1d(w_emb_size + c_emb_size, hidden_size, bias=False)
         self.hwy = Highway(2, hidden_size, p_drop)
