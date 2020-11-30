@@ -6,7 +6,6 @@ import pandas as pd
 
 from torch.utils.data import DataLoader
 
-from sample.bangliu import EncoderBlock as EB # remove
 from code.modules.encoder.depthwise_conv import DepthwiseSeparableConv
 from code.modules.encoder.highway import Highway
 from code.modules.encoder.residual_with_layer_dropout import ResidualWithLayerDropout
@@ -229,15 +228,4 @@ if __name__ == "__main__":
             x = highway(resizing_projection_layer(x))
             y = encoder(x, c_mask)
             print(f"Mio: {y}")
-            break
-
-    if test_EncoderBlock:
-        batch_size = 2
-        seq_length = 4
-        hidden_dim = 128
-        resizing_projection_layer = torch.nn.Linear(300, 128)
-        for x, _ in dataset2:
-            m = EB(4, 128, 8, 7, dropout=0.1)
-            y = m(resizing_projection_layer(x).transpose(1, 2), mask=c_mask)
-            print(f"Bangliu: {y.transpose(1,2)}")
             break

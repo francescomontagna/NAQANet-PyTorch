@@ -51,7 +51,9 @@ class QANet(nn.Module):
         self.cq_attention = CQAttention(hidden_size, p_dropout)
 
         self.modeling_resizing_layer = nn.Linear(4 * hidden_size, hidden_size)
-        self.modeling_encoder_block = EncoderBlock(device, hidden_size, len_sentence=c_max_len, p_dropout=0.1)
+
+        # Should be 7 but I have memory issues
+        self.modeling_encoder_blocks = nn.ModuleList([EncoderBlock(device, hidden_size, len_sentence=c_max_len, p_dropout=0.1) for _ in range(6)])
 
         self.pointer = Pointer(hidden_size) # return start and end spans
 
@@ -74,12 +76,14 @@ class QANet(nn.Module):
         X = self.cq_attention(cb, qb, self.c_mask_c2q, self.q_mask_c2q)
         self.passage_aware_rep = self.modeling_resizing_layer(X)
 
-        # TODO stack of 7 encoders
+        # TODO stack of encoders
         modeled_passage_list = [self.modeling_resizing_layer(X)]
+        modeled_passage = modeled_passage_list[-1]
         for _ in range(3):
-            modeled_passage = self.dropout_layer(
-                self.modeling_encoder_block(modeled_passage_list[-1], self.c_mask_enc)
-            )
+            for block in self.modeling_encoder_blocks:
+                modeled_passage = self.dropout_layer(
+                    block(modeled_passage, self.c_mask_enc)
+                )
             modeled_passage_list.append(modeled_passage)
 
         # Pop the first one, which is input. M0, M1, M2

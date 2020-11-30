@@ -272,6 +272,46 @@ class NAQANet(QANet):
                 best_passage_span_log_prob += answer_ability_log_probs[
                     :, self.passage_span_extraction_index
                 ]
+
+        # If answer is given, compute the loss.
+        if (
+            answer_as_passage_spans is not None
+            or answer_as_question_spans is not None
+            or answer_as_add_sub_expressions is not None
+            or answer_as_counts is not None
+        ):
+
+            log_marginal_likelihood_list = []
+
+            for answering_ability in self.answering_abilities:
+                if answering_ability == "passage_span_extraction":
+                    # Shape: (batch_size, # of answer spans, 2)
+                    gold_passage_span_starts = answer_as_passage_spans[:, :, 0]
+                    gold_passage_span_ends = answer_as_passage_spans[:, :, 1]
+                    # Shape: (batch_size, # of answer spans)
+                    log_likelihood_for_passage_span_starts = torch.gather(
+                        passage_span_start_log_probs, 1, gold_passage_span_starts
+                    )
+                    log_likelihood_for_passage_span_ends = torch.gather(
+                        passage_span_end_log_probs, 1, gold_passage_span_ends
+                    )
+                    # Shape: (batch_size, # of answer spans)
+                    log_likelihood_for_passage_spans = (
+                        log_likelihood_for_passage_span_starts
+                        + log_likelihood_for_passage_span_ends
+                    )
+                    # For those padded spans, we set their log probabilities to be very small negative value
+                    log_likelihood_for_passage_spans = (
+                        replace_masked_values_with_big_negative_number(
+                            log_likelihood_for_passage_spans,
+                            gold_passage_span_mask,
+                        )
+                    )
+                    # Shape: (batch_size, )
+                    log_marginal_likelihood_for_passage_span = util.logsumexp(
+                        log_likelihood_for_passage_spans
+                    )
+                    log_marginal_likelihood_list.append(log_marginal_likelihood_for_passage_span)
         
 
 if __name__ == "__main__":

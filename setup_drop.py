@@ -339,12 +339,11 @@ def process_file(filename, data_type, word_counter, char_counter):
                             "answer_info": answer_info
                             }
 
+                # If changes are needed compare with https://github.com/huminghao16/MTMSN/blob/master/drop/drop_utils.py
                 examples.append(example)
 
                 # print(f"Answer info: {answer_info}") 
                 # print("")
-            break 
-
     return examples
 
 
@@ -362,14 +361,12 @@ def get_embedding(counter, data_type, limit=-1, emb_file=None, vec_size=None, nu
                 vector = list(map(float, array[-vec_size:]))
                 if word in counter and counter[word] > limit: # if the word is in our data, add the embedding to the matrix
                     embedding_dict[word] = vector
-                break
         print(f"{len(embedding_dict)} / {len(filtered_elements)} tokens have corresponding {data_type} embedding vector")
     else:
         assert vec_size is not None
         for token in filtered_elements:
             embedding_dict[token] = [np.random.normal(
                 scale=0.1) for _ in range(vec_size)]
-            break
         print(f"{len(filtered_elements)} tokens have corresponding {data_type} embedding vector")
 
     NULL = "--NULL--"
