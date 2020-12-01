@@ -15,6 +15,7 @@ from tqdm import tqdm
 from code.args_drop import get_setup_drop_args # TODO put everything in single .py file
 
 max_count = 100000
+DEBUG_THRESHOLD = 100
 
 def download_url(url, output_path, show_progress=True):
     class DownloadProgressBar(tqdm):
@@ -240,7 +241,7 @@ def convert_idx(text, tokens):
 
 def process_file(filename, data_type, word_counter, char_counter, debug = False):
     print(f"Pre-processing {data_type} examples...")
-    max_spans = max_num_idx = max_counts = max_as_expr =  0
+    max_spans = max_num_idx = max_counts_size = max_as_expr =  0
     examples = []
     eval_examples = {}
     total = 0
@@ -285,8 +286,6 @@ def process_file(filename, data_type, word_counter, char_counter, debug = False)
                     if number is not None:
                         numbers_in_passage.append(number)
                         number_indices.append(token_index)
-                if len(number_indices) > max_num_idx:
-                    max_num_idx = len(number_indices)
                 numbers_as_tokens = [str(number) for number in numbers_in_passage]
 
                 valid_passage_spans = (
@@ -294,8 +293,6 @@ def process_file(filename, data_type, word_counter, char_counter, debug = False)
                 if tokenized_answer_texts
                 else []
                 )
-                if len(valid_passage_spans) > max_spans:
-                    max_spans = len(valid_passage_spans)
 
                 target_numbers = []
                 # `answer_texts` is a list of valid answers.
@@ -309,22 +306,18 @@ def process_file(filename, data_type, word_counter, char_counter, debug = False)
                     valid_signs_for_add_sub_expressions = find_valid_add_sub_expressions(
                         numbers_in_passage, target_numbers
                     )
-                    if len(valid_signs_for_add_sub_expressions) > max_as_expr:
-                        max_as_expr = len(valid_signs_for_add_sub_expressions)
                 if answer_type in ["number"]:
                     # Support count number 0 ~ max_count
                     # Does not support float
                     numbers_for_count = list(range(max_count))
                     valid_counts = find_valid_counts(numbers_for_count, target_numbers)
-                    if len(valid_counts) > max_counts:
-                        max_counts = len(valid_counts)
 
 
                 # -1 if no answer is provided
                 if valid_passage_spans == []:
                     valid_passage_spans.append((-1, -1))
                 if valid_signs_for_add_sub_expressions == []:
-                    valid_signs_for_add_sub_expressions.append(-1)
+                    valid_signs_for_add_sub_expressions.append([-1])
                 if valid_counts == []:
                     valid_counts.append(-1)
                 if number_indices == []:
@@ -366,21 +359,16 @@ def process_file(filename, data_type, word_counter, char_counter, debug = False)
 
             if debug:
                 # print answer info of the examples
-                # print(f"Answer info: {answer_info}")
-                print(f"number_indices: {number_indices}")
-                print(f"start_indices: {start_indices}")
-                print(f"end_indices: {end_indices}")
-                print(f"counts: {valid_counts}")
-                print(f"add_sub_expressions: {valid_signs_for_add_sub_expressions}")
-                break
-    
-    print(f"MAX number_indices: {max_num_idx}")
-    print(f"MAX start_indices: {max_spans}")
-    print(f"MAX counts: {max_counts}")
-    print(f"MAX add_sub_expressions: {max_as_expr}")
-    
-    jnuisbdai = jicids
+                if DEBUG_THRESHOLD < 10:
+                    print(f"number_indices: {number_indices}")
+                    print(f"start_indices: {start_indices}")
+                    print(f"end_indices: {end_indices}")
+                    print(f"counts: {valid_counts}")
+                    print(f"add_sub_expressions: {valid_signs_for_add_sub_expressions}")
 
+                if len(examples) > DEBUG_THRESHOLD:
+                    break
+    
     return examples
 
 
@@ -392,6 +380,7 @@ def get_embedding(counter, data_type, limit=-1, emb_file=None, vec_size=None, nu
     if emb_file is not None:
         assert vec_size is not None
         with open(emb_file, "r", encoding="utf-8") as fh: # open glove/fasttext
+            num_examples = 0
             for line in tqdm(fh, total=num_vectors): # for each line = embedding
                 array = line.split()
                 word = "".join(array[0:-vec_size])
@@ -399,18 +388,23 @@ def get_embedding(counter, data_type, limit=-1, emb_file=None, vec_size=None, nu
                 if word in counter and counter[word] > limit: # if the word is in our data, add the embedding to the matrix
                     embedding_dict[word] = vector
 
+                num_examples += 1
+
                 if debug:
-                    break
+                    if num_examples > DEBUG_THRESHOLD:
+                        break
 
         print(f"{len(embedding_dict)} / {len(filtered_elements)} tokens have corresponding {data_type} embedding vector")
     else:
         assert vec_size is not None
+        num_examples = 0
         for token in filtered_elements:
             embedding_dict[token] = [np.random.normal(
                 scale=0.1) for _ in range(vec_size)]
 
             if debug:
-                break
+                if num_examples > DEBUG_THRESHOLD:
+                    break
             
         print(f"{len(filtered_elements)} tokens have corresponding {data_type} embedding vector")
 
@@ -432,6 +426,10 @@ def build_features(args, examples, data_type, out_file, word2idx_dict, char2idx_
     ques_limit = args.test_ques_limit if is_test else args.ques_limit
     ans_limit = args.ans_limit
     char_limit = args.char_limit
+    num_idx_limit = args.num_idx_limit
+    spans_limit = args.spans_limit
+    counts_limit = args.counts_limit
+    as_expr_limit = args.as_expr_limit
 
     def drop_example(ex, is_test_=False):
         if is_test_:
@@ -483,7 +481,7 @@ def build_features(args, examples, data_type, out_file, word2idx_dict, char2idx_
         start_idx = np.zeros([spans_limit], dtype=np.int32) -1
         end_idx = np.zeros([spans_limit], dtype=np.int32) -1
         counts = np.zeros([counts_limit], dtype=np.int32) -1 # network does not detect negative numbers at the moment
-        add_sub_expressions = np.zeros([as_expr_limit], dtype=np.int32) -1
+        add_sub_expressions = np.zeros([as_expr_limit, num_idx_limit], dtype=np.int32) -1
 
         for i, token in enumerate(example["context_tokens"]):
             context_idx[i] = _get_word(token)
@@ -523,18 +521,33 @@ def build_features(args, examples, data_type, out_file, word2idx_dict, char2idx_
         for i, count in enumerate(example["counts"]):
             counts[i] = count
         tot_counts.append(counts)
-        
-        for i, expr in example["add_sub_expressions"]:
-            add_sub_expressions[i] = expr
+
+        for i, candidate_expr in enumerate(example["add_sub_expressions"]):
+            for j, sign in enumerate(candidate_expr):
+                if j == num_idx_limit:
+                    break
+                add_sub_expressions[i, j] = sign
         tot_add_sub_expressions.append(add_sub_expressions)
 
+
+        # new_add_sub_expressions = []
+        # for add_sub_expression in example["add_sub_expressions"]:
+        #     while len(add_sub_expression) < num_idx_limit:
+        #         add_sub_expression.append(-1)
+        #     new_add_sub_expressions.append(add_sub_expression)
+
+        # while len(new_add_sub_expressions) < as_expr_limit:
+        #     new_add_sub_expressions.append([-1] * num_idx_limit)
+        # new_add_sub_expressions = np.array(new_add_sub_expressions)
+        # tot_add_sub_expressions.append(new_add_sub_expressions)
+
         if debug:
-            print(f"\nGlobal number indices: {number_idxs}")
-            print(f"lobal start indices: {tot_start_idxs}")
-            print(f"Global end indices: {tot_end_idxs}")
-            print(f"Global counts: {tot_counts}")
-            print(f"Global add_sub_expressions: {tot_add_sub_expressions}")
-            break
+            pass
+            # print(f"\nGlobal number indices: {number_idxs}")
+            # print(f"lobal start indices: {start_idxs}")
+            # print(f"Global end indices: {end_idxs}")
+            # print(f"Global counts: {tot_counts}")
+            # print(f"Global add_sub_expressions: {tot_add_sub_expressions}")
 
     if not debug:
         np.savez(out_file,
@@ -573,8 +586,9 @@ def pre_process(args, debug = False):
     # process dev dataset
     eval_examples = process_file(args.dev_file, "dev", word_counter, char_counter, debug = debug)
 
-    build_features(args, train_examples, "train", args.train_record_file, word2idx_dict, char2idx_dict, debug = debug)
-    dev_meta = build_features(args, eval_examples, "dev", args.dev_record_file, word2idx_dict, char2idx_dict, debug = debug)
+    if debug:
+        build_features(args, train_examples, "train", args.train_record_file, word2idx_dict, char2idx_dict, debug = debug)
+        dev_meta = build_features(args, eval_examples, "dev", args.dev_record_file, word2idx_dict, char2idx_dict, debug = debug)
 
     # build golden files
     if not debug:

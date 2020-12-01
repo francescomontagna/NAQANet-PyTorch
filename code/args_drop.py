@@ -49,6 +49,22 @@ def get_setup_drop_args():
                         type=int,
                         default=70,
                         help='Max number of words to keep from a question')
+    parser.add_argument('--num_idx_limit',
+                        type=int,
+                        default=90,
+                        help='Max of \'number indices\' in a context')
+    parser.add_argument('--spans_limit',
+                        type=int,
+                        default=44,
+                        help='Max answer spans in a context')
+    parser.add_argument('--counts_limit',
+                        type=int,
+                        default=1,
+                        help='Max number of numerical answers in a context')
+    parser.add_argument('--as_expr_limit',
+                        type=int,
+                        default=403,
+                        help='Max number of addition/subtraction signs for an answer')
     parser.add_argument('--test_para_limit',
                         type=int,
                         default=1000,

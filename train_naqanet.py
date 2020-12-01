@@ -120,13 +120,13 @@ def main(args):
 
     # Get data loader
     log.info('Building dataset...')
-    train_dataset = SQuAD(args.train_record_file, args.use_squad_v2)
+    train_dataset = DROP(args.train_record_file)
     train_loader = data.DataLoader(train_dataset,
                                    batch_size=args.batch_size,
                                    shuffle=True,
                                    num_workers=args.num_workers,
                                    collate_fn=collate_fn)
-    dev_dataset = SQuAD(args.dev_record_file, args.use_squad_v2)
+    dev_dataset = DROP(args.dev_record_file)
     dev_loader = data.DataLoader(dev_dataset,
                                  batch_size=args.batch_size,
                                  shuffle=False,
@@ -143,11 +143,6 @@ def main(args):
         with torch.enable_grad(), \
                 tqdm(total=len(train_loader.dataset)) as progress_bar:
             for cw_idxs, cc_idxs, qw_idxs, qc_idxs, y1, y2, ids in train_loader:
-                # Find indices of numbers in the contexts. Shape: (# True values, 2)
-                # start_time = time.time()
-                number_indices = np.argwhere((np.isin(cw_idxs.numpy(),number_emb_idxs)))
-                # print("--- %s seconds ---" % (time.time() - start_time))
-
                 # Setup for forward
                 cw_idxs = cw_idxs.to(device)
                 cc_idxs = cc_idxs.to(device)
