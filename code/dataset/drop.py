@@ -1,6 +1,6 @@
 
 # TODO: turn it into drop
-class SQuAD(data.Dataset):
+class Drop(data.Dataset):
     """Stanford Question Answering Dataset (SQuAD).
     Each item in the dataset is a tuple with the following entries (in order):
         - context_idxs: Indices of the words in the context.
@@ -28,27 +28,12 @@ class SQuAD(data.Dataset):
         self.context_char_idxs = torch.from_numpy(dataset['context_char_idxs']).long()
         self.question_idxs = torch.from_numpy(dataset['ques_idxs']).long()
         self.question_char_idxs = torch.from_numpy(dataset['ques_char_idxs']).long()
-        self.y1s = torch.from_numpy(dataset['y1s']).long()
-        self.y2s = torch.from_numpy(dataset['y2s']).long()
-
-        if use_v2:
-            # SQuAD 2.0: Use index 0 for no-answer token (token 1 = OOV)
-            batch_size, c_len, w_len = self.context_char_idxs.size()
-            ones = torch.ones((batch_size, 1), dtype=torch.int64)
-            self.context_idxs = torch.cat((ones, self.context_idxs), dim=1)
-            self.question_idxs = torch.cat((ones, self.question_idxs), dim=1)
-
-            ones = torch.ones((batch_size, 1, w_len), dtype=torch.int64)
-            self.context_char_idxs = torch.cat((ones, self.context_char_idxs), dim=1)
-            self.question_char_idxs = torch.cat((ones, self.question_char_idxs), dim=1)
-
-            self.y1s += 1
-            self.y2s += 1
-
-        # SQuAD 1.1: Ignore no-answer examples
-        self.ids = torch.from_numpy(dataset['ids']).long()
-        self.valid_idxs = [idx for idx in range(len(self.ids))
-                           if use_v2 or self.y1s[idx].item() >= 0]
+        self.number_idxs = torch.from_numpy(dataset['number_idxs']).long()
+        self.start_idxs = torch.from_numpy(dataset['start_idxs']).long()
+        self.end_idxs = torch.from_numpy(dataset['end_idxs']).long()
+        self.counts = torch.from_numpy(dataset['counts']).long()
+        self.add_sub_expressions = torch.from_numpy(dataset['add_sub_expressions']).long()
+        # self.query_ids = torch.from_numpy(dataset['query_ids']).long()
 
     def __getitem__(self, idx):
         idx = self.valid_idxs[idx]
@@ -56,23 +41,27 @@ class SQuAD(data.Dataset):
                    self.context_char_idxs[idx],
                    self.question_idxs[idx],
                    self.question_char_idxs[idx],
-                   self.y1s[idx],
-                   self.y2s[idx],
-                   self.ids[idx])
+                   self.number_idxs[idx], 
+                   self.start_idxs[idx],
+                   self.end_idxs[idx],
+                   self.counts[idx],
+                   self.add_sub_expressions[idx]
+                   ) # query id ?
 
         return example
 
     def __len__(self):
         return len(self.valid_idxs)
 
-
+# Need to add padding -1 to start/end indices, number indices, counts and add_sub_expressions
 def collate_fn(examples):
     """Create batch tensors from a list of individual examples returned
-    by `SQuAD.__getitem__`. Merge examples of different length by padding
+    by `DROP.__getitem__`. Merge examples of different length by padding
     all examples to the maximum length in the batch.
     Args:
         examples (list): List of tuples of the form (context_idxs, context_char_idxs,
-        question_idxs, question_char_idxs, y1s, y2s, ids).
+        question_idxs, question_char_idxs, number_indices, start_indices, end_indices
+        counts, add_sub_expressions).
     Returns:
         examples (tuple): Tuple of tensors (context_idxs, context_char_idxs, question_idxs,
         question_char_idxs, y1s, y2s, ids). All of shape (batch_size, ...), where
@@ -83,22 +72,32 @@ def collate_fn(examples):
     def merge_0d(scalars, dtype=torch.int64):
         return torch.tensor(scalars, dtype=dtype)
 
-    def merge_1d(arrays, dtype=torch.int64, pad_value=0):
+    def merge_1d(arrays, dtype=torch.int64, pad_value=0, pad_with=0):
         lengths = [(a != pad_value).sum() for a in arrays]
-        padded = torch.zeros(len(arrays), max(lengths), dtype=dtype)
+        padded = torch.zeros(len(arrays), max(lengths), dtype=dtype) + pad_with
         for i, seq in enumerate(arrays):
             end = lengths[i]
             padded[i, :end] = seq[:end]
         return padded
 
-    def merge_2d(matrices, dtype=torch.int64, pad_value=0):
+    def merge_2d(matrices, dtype=torch.int64, pad_value=0, pad_with=0):
         heights = [(m.sum(1) != pad_value).sum() for m in matrices]
         widths = [(m.sum(0) != pad_value).sum() for m in matrices]
-        padded = torch.zeros(len(matrices), max(heights), max(widths), dtype=dtype)
+        padded = torch.zeros(len(matrices), max(heights), max(widths), dtype=dtype) + pad_with
         for i, seq in enumerate(matrices):
             height, width = heights[i], widths[i]
             padded[i, :height, :width] = seq[:height, :width]
         return padded
+
+
+    def pad_1d(tensors_list, pad_with):
+        lengths = [t.size(0) for t in tensors_list]
+        max_length = max(lengths)
+        for tensor in tensors_list:
+            
+
+    # For tokens padding character is 0 (<PAD> index in vocab)
+    # For indices padding character is -1.
 
     # Group by tensor type
     context_idxs, context_char_idxs, \

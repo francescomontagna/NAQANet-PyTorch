@@ -238,9 +238,9 @@ def convert_idx(text, tokens):
     return spans
 
 
-def process_file(filename, data_type, word_counter, char_counter):
+def process_file(filename, data_type, word_counter, char_counter, debug = False):
     print(f"Pre-processing {data_type} examples...")
-    max_c_len =max_q_len =  0
+    max_spans = max_num_idx = max_counts = max_as_expr =  0
     examples = []
     eval_examples = {}
     total = 0
@@ -251,8 +251,6 @@ def process_file(filename, data_type, word_counter, char_counter):
             passage = passage.replace(
                 "''", '" ').replace("``", '" ')
             passage_tokens = word_tokenize(passage)
-            if len(passage_tokens)  > max_c_len:
-                max_c_len = len(passage_tokens)
             passage_chars = [list(token) for token in passage_tokens]
             spans = convert_idx(passage, passage_tokens) # [[0, 3], [3, 10], .... [35, 41]] each element is a token represented as [start_index, end_index]
             for token in passage_tokens:
@@ -264,8 +262,6 @@ def process_file(filename, data_type, word_counter, char_counter):
                 ques = qa_pair["question"].replace(
                     "''", '" ').replace("``", '" ')
                 ques_tokens = word_tokenize(ques)
-                if len(ques_tokens) > max_q_len:
-                    max_q_len = len(ques_tokens)
                 ques_chars = [list(token) for token in ques_tokens]
                 for token in ques_tokens:
                     word_counter[token] += 1
@@ -283,12 +279,14 @@ def process_file(filename, data_type, word_counter, char_counter):
                     tokenized_answer_texts.append(" ".join(token for token in answer_tokens))
                 
                 numbers_in_passage = []
-                number_indices = []
+                number_indices = [] # lui qua mette un '-1' ... boh
                 for token_index, token in enumerate(passage_tokens):
                     number = convert_word_to_number(token)
                     if number is not None:
                         numbers_in_passage.append(number)
                         number_indices.append(token_index)
+                if len(number_indices) > max_num_idx:
+                    max_num_idx = len(number_indices)
                 numbers_as_tokens = [str(number) for number in numbers_in_passage]
 
                 valid_passage_spans = (
@@ -296,6 +294,8 @@ def process_file(filename, data_type, word_counter, char_counter):
                 if tokenized_answer_texts
                 else []
                 )
+                if len(valid_passage_spans) > max_spans:
+                    max_spans = len(valid_passage_spans)
 
                 target_numbers = []
                 # `answer_texts` is a list of valid answers.
@@ -305,30 +305,49 @@ def process_file(filename, data_type, word_counter, char_counter):
                         target_numbers.append(number)
                 valid_signs_for_add_sub_expressions: List[List[int]] = []
                 valid_counts: List[int] = []
-                if answer_type in ["number", "date"]:
+                if answer_type in ["number", "date"]: # ??? perche date?
                     valid_signs_for_add_sub_expressions = find_valid_add_sub_expressions(
                         numbers_in_passage, target_numbers
                     )
+                    if len(valid_signs_for_add_sub_expressions) > max_as_expr:
+                        max_as_expr = len(valid_signs_for_add_sub_expressions)
                 if answer_type in ["number"]:
                     # Support count number 0 ~ max_count
                     # Does not support float
                     numbers_for_count = list(range(max_count))
                     valid_counts = find_valid_counts(numbers_for_count, target_numbers)
+                    if len(valid_counts) > max_counts:
+                        max_counts = len(valid_counts)
 
-                type_to_answer_map = {
-                    "passage_span": valid_passage_spans,
-                    "addition_subtraction": valid_signs_for_add_sub_expressions,
-                    "counting": valid_counts,
-                }
-                
-                # print(f"Type to answer map: {type_to_answer_map}") 
 
-                answer_info = {
-                    "answer_texts": answer_texts,  # this `answer_texts` will not be used for evaluation
-                    "answer_passage_spans": valid_passage_spans,
-                    "signs_for_add_sub_expressions": valid_signs_for_add_sub_expressions,
-                    "counts": valid_counts,
-                }
+                # -1 if no answer is provided
+                if valid_passage_spans == []:
+                    valid_passage_spans.append((-1, -1))
+                if valid_signs_for_add_sub_expressions == []:
+                    valid_signs_for_add_sub_expressions.append(-1)
+                if valid_counts == []:
+                    valid_counts.append(-1)
+                if number_indices == []:
+                    number_indices.append(-1)
+
+                # split start and end indices
+                start_indices = []
+                end_indices = []
+                for span in valid_passage_spans:
+                    start_indices.append(span[0])
+                    end_indices.append(span[1])
+
+                # type_to_answer_map = {
+                #     "passage_span": valid_passage_spans,
+                #     "addition_subtraction": valid_signs_for_add_sub_expressions,
+                #     "counting": valid_counts,
+
+                # answer_info = {
+                #     "answer_texts": answer_texts,  # this `answer_texts` will not be used for evaluation
+                #     "answer_passage_spans": valid_passage_spans,
+                #     "signs_for_add_sub_expressions": valid_signs_for_add_sub_expressions,
+                #     "counts": valid_counts,
+                # }
 
                 # single question answer pair
                 example = {"context_tokens": passage_tokens,
@@ -336,19 +355,37 @@ def process_file(filename, data_type, word_counter, char_counter):
                             "ques_tokens": ques_tokens,
                             "ques_chars": ques_chars,
                             "number_indices": number_indices,
-                            "answer_info": answer_info
+                            "start_indices": start_indices,
+                            "end_indices": end_indices,
+                            "counts": valid_counts,
+                            "add_sub_expressions": valid_signs_for_add_sub_expressions
                             }
 
                 # If changes are needed compare with https://github.com/huminghao16/MTMSN/blob/master/drop/drop_utils.py
                 examples.append(example)
 
-                # print(f"Answer info: {answer_info}") 
-                # print("")
+            if debug:
+                # print answer info of the examples
+                # print(f"Answer info: {answer_info}")
+                print(f"number_indices: {number_indices}")
+                print(f"start_indices: {start_indices}")
+                print(f"end_indices: {end_indices}")
+                print(f"counts: {valid_counts}")
+                print(f"add_sub_expressions: {valid_signs_for_add_sub_expressions}")
+                break
+    
+    print(f"MAX number_indices: {max_num_idx}")
+    print(f"MAX start_indices: {max_spans}")
+    print(f"MAX counts: {max_counts}")
+    print(f"MAX add_sub_expressions: {max_as_expr}")
+    
+    jnuisbdai = jicids
+
     return examples
 
 
 # Used both for word and char embeddings. # No changes
-def get_embedding(counter, data_type, limit=-1, emb_file=None, vec_size=None, num_vectors=None):
+def get_embedding(counter, data_type, limit=-1, emb_file=None, vec_size=None, num_vectors=None, debug = False):
     print(f"Pre-processing {data_type} vectors...")
     embedding_dict = {}
     filtered_elements = [k for k, v in counter.items() if v > limit] # word not included if associated to few QA pairs. limit is actually -1
@@ -361,12 +398,20 @@ def get_embedding(counter, data_type, limit=-1, emb_file=None, vec_size=None, nu
                 vector = list(map(float, array[-vec_size:]))
                 if word in counter and counter[word] > limit: # if the word is in our data, add the embedding to the matrix
                     embedding_dict[word] = vector
+
+                if debug:
+                    break
+
         print(f"{len(embedding_dict)} / {len(filtered_elements)} tokens have corresponding {data_type} embedding vector")
     else:
         assert vec_size is not None
         for token in filtered_elements:
             embedding_dict[token] = [np.random.normal(
                 scale=0.1) for _ in range(vec_size)]
+
+            if debug:
+                break
+            
         print(f"{len(filtered_elements)} tokens have corresponding {data_type} embedding vector")
 
     NULL = "--NULL--"
@@ -382,7 +427,7 @@ def get_embedding(counter, data_type, limit=-1, emb_file=None, vec_size=None, nu
     return emb_mat, token2idx_dict
 
 
-def build_features(args, examples, data_type, out_file, word2idx_dict, char2idx_dict, is_test=False):
+def build_features(args, examples, data_type, out_file, word2idx_dict, char2idx_dict, is_test=False, debug = False):
     para_limit = args.test_para_limit if is_test else args.para_limit
     ques_limit = args.test_ques_limit if is_test else args.ques_limit
     ans_limit = args.ans_limit
@@ -406,7 +451,11 @@ def build_features(args, examples, data_type, out_file, word2idx_dict, char2idx_
     ques_idxs = []
     ques_char_idxs = []
     number_idxs = []
-    answers_info = []
+    start_idxs = []
+    end_idxs = []
+    tot_counts = []
+    tot_add_sub_expressions = []
+
     print(f"Len examples: {len(examples)}")
     for n, example in tqdm(enumerate(examples)):
         total_ += 1 # count total number of examples in the dataset
@@ -430,6 +479,11 @@ def build_features(args, examples, data_type, out_file, word2idx_dict, char2idx_
         context_char_idx = np.zeros([para_limit, char_limit], dtype=np.int32)
         ques_idx = np.zeros([ques_limit], dtype=np.int32)
         ques_char_idx = np.zeros([ques_limit, char_limit], dtype=np.int32)
+        number_idx = np.zeros([num_idx_limit], dtype=np.int32) -1
+        start_idx = np.zeros([spans_limit], dtype=np.int32) -1
+        end_idx = np.zeros([spans_limit], dtype=np.int32) -1
+        counts = np.zeros([counts_limit], dtype=np.int32) -1 # network does not detect negative numbers at the moment
+        add_sub_expressions = np.zeros([as_expr_limit], dtype=np.int32) -1
 
         for i, token in enumerate(example["context_tokens"]):
             context_idx[i] = _get_word(token)
@@ -453,21 +507,46 @@ def build_features(args, examples, data_type, out_file, word2idx_dict, char2idx_
                 ques_char_idx[i, j] = _get_char(char)
         ques_char_idxs.append(ques_char_idx)
 
-        number_indices = example["number_indices"]
-        annotation = example["answer_info"]
-        number_idxs.append(number_indices)
-        answers_info.append(annotation)
+        # Note:bidimensional containers, one element for each example
+        for i, num in enumerate(example["number_indices"]):
+            number_idx[i] = num
+        number_idxs.append(number_idx)
 
-        # for k, v in example.items():
-        #     print(f"({k}, {v})")
+        for i, start in enumerate(example["start_indices"]):
+            start_idx[i] = start
+        start_idxs.append(start_idx)
+        
+        for i, end in enumerate(example["end_indices"]):
+            end_idx[i] = end
+        end_idxs.append(end_idx)
 
-    np.savez(out_file,
-             context_idxs=np.array(context_idxs),
-             context_char_idxs=np.array(context_char_idxs),
-             ques_idxs=np.array(ques_idxs),
-             ques_char_idxs=np.array(ques_char_idxs),
-             number_idxs=np.array(number_idxs),
-             answers_info=np.array(answers_info))
+        for i, count in enumerate(example["counts"]):
+            counts[i] = count
+        tot_counts.append(counts)
+        
+        for i, expr in example["add_sub_expressions"]:
+            add_sub_expressions[i] = expr
+        tot_add_sub_expressions.append(add_sub_expressions)
+
+        if debug:
+            print(f"\nGlobal number indices: {number_idxs}")
+            print(f"lobal start indices: {tot_start_idxs}")
+            print(f"Global end indices: {tot_end_idxs}")
+            print(f"Global counts: {tot_counts}")
+            print(f"Global add_sub_expressions: {tot_add_sub_expressions}")
+            break
+
+    if not debug:
+        np.savez(out_file,
+                context_idxs=np.array(context_idxs),
+                context_char_idxs=np.array(context_char_idxs),
+                ques_idxs=np.array(ques_idxs),
+                ques_char_idxs=np.array(ques_char_idxs),
+                number_idxs=np.array(number_idxs),
+                start_idxs=np.array(start_idxs), 
+                end_idxs=np.array(end_idxs),
+                counts=np.array(tot_counts), 
+                add_sub_expressions=np.array(tot_add_sub_expressions))
     print(f"Built {total} / {total_} instances of features in total")
     meta["total"] = total
     return meta
@@ -480,37 +559,45 @@ def save(filename, obj, message=None):
             json.dump(obj, fh)
 
 
-def pre_process(args):
+def pre_process(args, debug = False):
     word_counter = Counter()
     char_counter = Counter()
     
     # process training dataset
-    train_examples = process_file(args.train_file, "train", word_counter, char_counter)
+    train_examples = process_file(args.train_file, "train", word_counter, char_counter, debug = debug)
     word_emb_mat, word2idx_dict = get_embedding(word_counter, "word",
-        emb_file=args.glove_path, vec_size=args.glove_dim, num_vectors=args.glove_num_vecs)
+        emb_file=args.glove_path, vec_size=args.glove_dim, num_vectors=args.glove_num_vecs, debug = debug)
     char_emb_mat, char2idx_dict = get_embedding(char_counter, "char",
-         emb_file=None, vec_size=args.char_dim)
+         emb_file=None, vec_size=args.char_dim, debug = debug)
 
     # process dev dataset
-    eval_examples = process_file(args.dev_file, "dev", word_counter, char_counter)
+    eval_examples = process_file(args.dev_file, "dev", word_counter, char_counter, debug = debug)
+
+    build_features(args, train_examples, "train", args.train_record_file, word2idx_dict, char2idx_dict, debug = debug)
+    dev_meta = build_features(args, eval_examples, "dev", args.dev_record_file, word2idx_dict, char2idx_dict, debug = debug)
 
     # build golden files
-    build_features(args, train_examples, "train", args.train_record_file, word2idx_dict, char2idx_dict)
-    dev_meta = build_features(args, eval_examples, "dev", args.dev_record_file, word2idx_dict, char2idx_dict)
+    if not debug:
+        build_features(args, train_examples, "train", args.train_record_file, word2idx_dict, char2idx_dict)
+        dev_meta = build_features(args, eval_examples, "dev", args.dev_record_file, word2idx_dict, char2idx_dict)
 
-    # save generated files
-    save(args.word_emb_file, word_emb_mat, message="word embedding")
-    save(args.char_emb_file, char_emb_mat, message="char embedding")
+        # save generated files
+        save(args.word_emb_file, word_emb_mat, message="word embedding")
+        save(args.char_emb_file, char_emb_mat, message="char embedding")
 
-    # TODO decide eval dict form and define it in process_file
-    # save(args.train_eval_file, train_eval, message="train eval")
-    # save(args.dev_eval_file, dev_eval, message="dev eval")
-    save(args.word2idx_file, word2idx_dict, message="word dictionary")
-    save(args.char2idx_file, char2idx_dict, message="char dictionary")
-    save(args.dev_meta_file, dev_meta, message="dev meta")
+        # TODO decide eval dict form and define it in process_file
+        # save(args.train_eval_file, train_eval, message="train eval")
+        # save(args.dev_eval_file, dev_eval, message="dev eval")
+        save(args.word2idx_file, word2idx_dict, message="word dictionary")
+        save(args.char2idx_file, char2idx_dict, message="char dictionary")
+        save(args.dev_meta_file, dev_meta, message="dev meta")
 
 
 if __name__ == "__main__":
+
+    # Set to True for debugging
+    debug = False
+
     # Get command-line args
     args = get_setup_drop_args()
 
@@ -518,4 +605,8 @@ if __name__ == "__main__":
     download(args)
 
     nlp = spacy.blank("en")
-    pre_process(args)
+
+    if debug:
+        pre_process(args, debug=True)
+    else:
+        pre_process(args)
