@@ -85,17 +85,18 @@ def collate_fn(examples):
             padded[i, :end] = seq[:end]
         return padded
 
-    # Penso che pad_vaòue e pad_with a sto punto siano la stessa cosa
-    def merge_2d(matrices, dtype=torch.int64, pad_value=0):
-        heights = [(m.sum(1) != pad_value).sum() for m in matrices]
-        widths = [(m.sum(0) != pad_value).sum() for m in matrices]
+    def merge_2d(matrices, dtype=torch.int64, pad_value=0, add_sub = False):
+        if pad_value == 0:
+            heights = [((m).sum(1) != pad_value).sum() for m in matrices]
+            widths = [((m).sum(0) != pad_value).sum() for m in matrices]
+        else:
+            heights = [((m != pad_value).sum(1) != 0).sum() for m in matrices]
+            widths = [((m != pad_value).sum(0) != 0).sum() for m in matrices]
         padded = torch.zeros(len(matrices), max(heights), max(widths), dtype=dtype) + pad_value
         for i, seq in enumerate(matrices):
             height, width = heights[i], widths[i]
             padded[i, :height, :width] = seq[:height, :width]
         return padded
-
-
 
     # For tokens padding character is 0 (<PAD> index in vocab)
     # For indices padding character is -1.
@@ -106,11 +107,6 @@ def collate_fn(examples):
         number_indices, start_indices, \
         end_indices, counts, \
         add_sub_expressions = zip(*examples)
-
-    # context_idxs, context_char_idxs, \
-    # question_idxs, question_char_idxs, \
-    # number_indices, start_indices, \
-    # end_indices, counts = zip(*examples)
 
     # Merge into batch tensors
     context_idxs = merge_1d(context_idxs)
@@ -153,5 +149,11 @@ if __name__ == "__main__":
         number_indices, start_indices, counts, \
         add_sub_expressions = example
 
+        print(add_sub_expressions.size())
+        print(start_indices.size())
+        print(context_idxs.size())
+        print(question_char_idxs.size())
+        print(counts.size())
         
-        
+        if i >= 3:
+            break
