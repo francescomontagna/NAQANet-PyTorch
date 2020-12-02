@@ -75,7 +75,7 @@ def collate_fn(examples):
         https://github.com/yunjey/seq2seq-dataloader
     """
     def merge_0d(scalars, dtype=torch.int64):
-        return torch.tensor(scalars, dtype=dtype)
+        return torch.tensor(scalars, dtype=dtype).unsqueeze(-1)
 
     def merge_1d(arrays, dtype=torch.int64, pad_value=0):
         lengths = [(a != pad_value).sum() for a in arrays]

@@ -10,7 +10,7 @@ from code.modules.pointer import Pointer
 from code.modules.cq_attention import CQAttention
 from code.modules.embeddings import Embedding
 from code.modules.utils import set_mask
-from code.util import torch_from_json, masked_softmax, get_best_span
+from code.util import torch_from_json, masked_softmax, get_best_span, replace_masked_values_with_big_negative_number
 from code.args import get_train_args
 from code.model.qanet import QANet
 from code import util
@@ -106,9 +106,13 @@ class NAQANet(QANet):
                 nn.ReLU()
             )
 
-    def forward(self, cw_idxs, cc_idxs, qw_idxs, qc_idxs, number_indices):
+    def forward(self, cw_idxs, cc_idxs, qw_idxs, qc_idxs, number_indices, 
+                answer_start_as_passage_spans: torch.LongTensor = None,
+                answer_end_as_passage_spans: torch.LongTensor = None,
+                answer_as_counts: torch.LongTensor = None,
+                answer_as_add_sub_expressions: torch.LongTensor = None):
 
-        span_start_logits, span_end_logits = super().forward(cw_idxs, cc_idxs, qw_idxs, qc_idxs)
+        spans_start, spans_end = super().forward(cw_idxs, cc_idxs, qw_idxs, qc_idxs)
 
         # The first modeling layer is used to calculate the vector representation of passage
         passage_weights = masked_softmax(self.passage_weights_layer(self.passage_aware_rep).squeeze(-1), self.c_mask_c2q, log_softmax = False)
@@ -130,7 +134,6 @@ class NAQANet(QANet):
             # Shape: (batch_size, self.max_count)
             count_number_logits = self.count_number_predictor(passage_vector_rep)
             count_number_log_probs = torch.nn.functional.log_softmax(count_number_logits, -1) # softmax over possible numbers
-
             # Info about the best count number prediction
             # Shape: (batch_size,)
             best_count_number = torch.argmax(count_number_log_probs, -1) # most probable numeric value
@@ -144,31 +147,23 @@ class NAQANet(QANet):
         # Sto buttando il mio tempo
         if "addition_subtraction" in self.answering_abilities:
             # M3
-            modeled_passage = self.dropout_layer(
-                self.modeling_encoder_block(self.modeled_passage_list[-1], self.c_mask_enc)
-            )
+            modeled_passage = self.modeled_passage_list[-1]
+            for block in self.modeling_encoder_blocks:
+                modeled_passage = self.dropout_layer(
+                    block(modeled_passage, self.c_mask_enc)
+                )
+            
             self.modeled_passage_list.append(modeled_passage)
             encoded_passage_for_numbers = torch.cat(
                 [self.modeled_passage_list[0], self.modeled_passage_list[3]], dim=-1
             )
 
             # Reshape number indices to (batch_size, # numbers in longest passage)
-            batch_size = encoded_passage_for_numbers.size(0)
-            formatted_num_idxs = [[] for _ in range(batch_size)]
-            for row in number_indices: # row = [batch_idx, number idx]
-                formatted_num_idxs[row[0]].append(row[1])
-            
-            for i in range(len(formatted_num_idxs)):
-                formatted_num_idxs[i] = torch.tensor(formatted_num_idxs[i])
-
-            padded_num_idxs = pad_sequence(formatted_num_idxs,
-                                            batch_first=True,
-                                            padding_value = -1)
             
             # create mask on indices
-            number_mask = padded_num_idxs != -1
+            number_mask = number_indices != -1
             # print(f"number_mask {number_mask}")
-            clamped_number_indices = padded_num_idxs.masked_fill(~number_mask, 0).type(torch.int64).to(self.device)
+            clamped_number_indices = number_indices.masked_fill(~number_mask, 0).type(torch.int64).to(self.device)
             number_mask = number_mask.to(self.device)
 
             if number_mask.size(1) > 0:
@@ -224,7 +219,7 @@ class NAQANet(QANet):
                     print("No numbers in the batch")
 
         
-        # Both paper and code od naqanet implementation differ from paper and code of qanet...
+        # Both paper and code of naqanet implementation differ from paper and code of qanet...
         if "passage_span_extraction" in self.answering_abilities:
             # Shape: (batch_size, passage_length, modeling_dim * 2))
             passage_for_span_start = torch.cat(
@@ -242,7 +237,7 @@ class NAQANet(QANet):
             passage_span_end_logits = self.passage_span_end_predictor(
                 passage_for_span_end
             ).squeeze(-1)
-            # Shape: (batch_size, passage_length)
+            # Shape: (batch_size, passage_length). Prob on log scale from -infinite to 0
             passage_span_start_log_probs = util.masked_log_softmax(
                 passage_span_start_logits, self.c_mask_c2q
             )
@@ -251,14 +246,15 @@ class NAQANet(QANet):
             )
 
             # Info about the best passage span prediction
-            passage_span_start_logits = passage_span_start_logits.\
-                masked_fill(~self.c_mask_c2q, 1e-30)
-            passage_span_end_logits = passage_span_end_logits.\
-                masked_fill(~self.c_mask_c2q, 1e-30)
-            
+            passage_span_start_logits = replace_masked_values_with_big_negative_number( \
+                passage_span_start_logits, self.c_mask_c2q
+            )
+            passage_span_end_logits = replace_masked_values_with_big_negative_number(
+                passage_span_end_logits, self.c_mask_c2q
+            )
             # Shape: (batch_size, 2)
             best_passage_span = get_best_span(passage_span_start_logits, passage_span_end_logits)
-            print(f"Best_passage_span according to allen: {best_passage_span}")
+            print(f"Best_span: {best_passage_span}")
             # Shape: (batch_size, 2)
             best_passage_start_log_probs = torch.gather(
                 passage_span_start_log_probs, 1, best_passage_span[:, 0].unsqueeze(-1)
@@ -273,9 +269,11 @@ class NAQANet(QANet):
                     :, self.passage_span_extraction_index
                 ]
 
+        output_dict = {}
+
         # If answer is given, compute the loss.
         if (
-            answer_as_passage_spans is not None
+            answer_start_as_passage_spans is not None
             or answer_as_question_spans is not None
             or answer_as_add_sub_expressions is not None
             or answer_as_counts is not None
@@ -285,15 +283,22 @@ class NAQANet(QANet):
 
             for answering_ability in self.answering_abilities:
                 if answering_ability == "passage_span_extraction":
-                    # Shape: (batch_size, # of answer spans, 2)
-                    gold_passage_span_starts = answer_as_passage_spans[:, :, 0]
-                    gold_passage_span_ends = answer_as_passage_spans[:, :, 1]
+                    # Shape: (batch_size, # of answer spans)
+                    gold_passage_span_starts = answer_start_as_passage_spans
+                    gold_passage_span_ends = answer_end_as_passage_spans
+                    # Some spans are padded with index -1,
+                    # so we clamp those paddings to 0 and then mask after `torch.gather()`.
+                    gold_passage_span_mask = gold_passage_span_starts != -1 # start and end should share same mask
+                    clamped_gold_passage_span_starts = gold_passage_span_starts. \
+                            masked_fill(~gold_passage_span_mask, 0)
+                    clamped_gold_passage_span_ends = gold_passage_span_ends. \
+                            masked_fill(~gold_passage_span_mask, 0)
                     # Shape: (batch_size, # of answer spans)
                     log_likelihood_for_passage_span_starts = torch.gather(
-                        passage_span_start_log_probs, 1, gold_passage_span_starts
+                        passage_span_start_log_probs, 1, clamped_gold_passage_span_starts
                     )
                     log_likelihood_for_passage_span_ends = torch.gather(
-                        passage_span_end_log_probs, 1, gold_passage_span_ends
+                        passage_span_end_log_probs, 1, clamped_gold_passage_span_ends
                     )
                     # Shape: (batch_size, # of answer spans)
                     log_likelihood_for_passage_spans = (
@@ -312,13 +317,48 @@ class NAQANet(QANet):
                         log_likelihood_for_passage_spans
                     )
                     log_marginal_likelihood_list.append(log_marginal_likelihood_for_passage_span)
+                
+                elif answering_ability == "counting":
+                    # Count answers are padded with label -1,
+                    # so we clamp those paddings to 0 and then mask after `torch.gather()`.
+                    # Shape: (batch_size, # of count answers)
+                    gold_count_mask = answer_as_counts != -1
+                    # Shape: (batch_size, # of count answers)
+                    clamped_gold_counts = answer_as_counts.masked_fill(~gold_count_mask, 0)
+                    log_likelihood_for_counts = torch.gather(
+                        count_number_log_probs, 1, clamped_gold_counts
+                    )
+                    # For those padded spans, we set their log probabilities to be very small negative value
+                    log_likelihood_for_counts = replace_masked_values_with_big_negative_number(
+                        log_likelihood_for_counts, gold_count_mask
+                    )
+                    # Shape: (batch_size, )
+                    log_marginal_likelihood_for_count = util.logsumexp(log_likelihood_for_counts)
+                    log_marginal_likelihood_list.append(log_marginal_likelihood_for_count)
+
+                else:
+                    raise ValueError(f"Unsupported answering ability: {answering_ability}")
+            
+            if len(self.answering_abilities) > 1:
+                # Add the ability probabilities if there are more than one abilities
+                all_log_marginal_likelihoods = torch.stack(log_marginal_likelihood_list, dim=-1)
+                all_log_marginal_likelihoods = (
+                    all_log_marginal_likelihoods + answer_ability_log_probs
+                )
+                marginal_log_likelihood = util.logsumexp(all_log_marginal_likelihoods)
+            else:
+                marginal_log_likelihood = log_marginal_likelihood_list[0]
+
+            output_dict["loss"] = -marginal_log_likelihood.mean()
+
+        return output_dict
         
 
 if __name__ == "__main__":
     test = True
 
     if test:
-        torch.manual_seed(22)
+        torch.manual_seed(91)
         np.random.seed(2)
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         wemb_vocab_size = 5000
@@ -327,9 +367,11 @@ if __name__ == "__main__":
         cemb_vocab_size = 94
         cemb_dim = 64
         d_model = 128
-        batch_size = 4
+        batch_size = 8
         q_max_len = 6
         c_max_len = 10
+        spans_limit = 6
+        num_limit = 5
         char_dim = 16
 
         # fake embedding
@@ -343,6 +385,15 @@ if __name__ == "__main__":
         context_lengths = torch.LongTensor(batch_size).random_(1, c_max_len)
         context_wids = torch.zeros(batch_size, c_max_len).long()
         context_cids = torch.zeros(batch_size, c_max_len, char_dim).long()
+
+        num_idxs_length = torch.LongTensor(batch_size).random_(0, num_limit)
+        number_indices = torch.zeros(batch_size, num_limit).long() -1
+
+        spans_length = torch.LongTensor(batch_size).random_(0, spans_limit)
+        start_indices = torch.zeros(batch_size, spans_limit).long() -1
+        end_indices = torch.zeros(batch_size, spans_limit).long() -1
+        counts = torch.zeros(batch_size).long() -1
+
         for i in range(batch_size):
             question_wids[i, 0:question_lengths[i]] = \
                 torch.LongTensor(1, question_lengths[i]).random_(
@@ -357,27 +408,27 @@ if __name__ == "__main__":
                 torch.LongTensor(1, context_lengths[i], char_dim).random_(
                     1, cemb_vocab_size)
 
-        number_indices = np.argwhere((np.isin(context_wids.numpy(),number_emb_idxs)))
+            number_indices[i, 0:num_idxs_length[i]] = \
+                torch.LongTensor(1, num_idxs_length[i]).random_(
+                    0, c_max_len)
+            start_indices[i, 0:spans_length[i]] = \
+                torch.LongTensor(1, spans_length[i]).random_(
+                    0, c_max_len)
+            end_indices[i, 0:spans_length[i]] = \
+                torch.LongTensor(1, spans_length[i]).random_(
+                    0, c_max_len)
+            counts[i] = torch.LongTensor(1).random_(
+                    -1, context_lengths[i])
+
+        counts = counts.unsqueeze(-1)
 
         # define model
         device = 'cpu'
-        model = NAQANet(device, wv_tensor, cv_tensor)
+        model = NAQANet(device, wv_tensor, cv_tensor, 
+            answering_abilities = ['passage_span_extraction', 'counting'])
 
-        p1, p2 = model(context_wids, context_cids,
-                       question_wids, question_cids, number_indices)
-        print(f"p1 {p1}")
-        print(f"p2 {p2}")
-        print(torch.sum(p1, dim=1))
-        print(torch.sum(p2))
-
-        yp1 = torch.argmax(p1, 1)
-        yp2 = torch.argmax(p2, 1)
-        yps = torch.stack([yp1, yp2], dim=1)
-        print(f"yp1 {yp1}")
-        print(f"yp2 {yp2}")
-        print(f"yps {yps}")
-
-        ymin, _ = torch.min(yps, 1)
-        ymax, _ = torch.max(yps, 1)
-        print(f"ymin {ymin}")
-        print(f"ymax {ymax}")
+        output_dict = model(context_wids, context_cids,
+                       question_wids, question_cids, number_indices,
+                       start_indices, end_indices, counts)
+        
+        print(output_dict)

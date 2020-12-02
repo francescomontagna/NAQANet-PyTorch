@@ -10,7 +10,7 @@ class Pointer(nn.Module):
         super().__init__()
         self.W1 = nn.Linear(d_model*2, 1)
         self.W2 = nn.Linear(d_model*2, 1)
-        self.softmax = nn.LogSoftmax(dim=-1)
+        self.log_softmax = nn.LogSoftmax(dim=-1)
 
     def forward(self, M:list, c_mask:torch.tensor):
         M1, M2, M3 = M[0], M[1], M[2]
@@ -20,7 +20,7 @@ class Pointer(nn.Module):
         Y2 = self.W2(X2).squeeze(-1)
         Y1 = mask_logits(Y1, c_mask)
         Y2 = mask_logits(Y2, c_mask)
-        span_start_index = self.softmax(Y1)
-        span_end_index = self.softmax(Y2)
+        span_start_index = self.log_softmax(Y1)
+        span_end_index = self.log_softmax(Y2)
         
         return span_start_index, span_end_index

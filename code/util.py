@@ -744,3 +744,52 @@ def compute_f1(a_gold, a_pred):
     recall = 1.0 * num_same / len(gold_toks)
     f1 = (2 * precision * recall) / (precision + recall)
     return f1
+
+def logsumexp(tensor: torch.Tensor, dim: int = -1, keepdim: bool = False) -> torch.Tensor:
+    """
+    A numerically stable computation of logsumexp. This is mathematically equivalent to
+    `tensor.exp().sum(dim, keep=keepdim).log()`.  This function is typically used for summing log
+    probabilities.
+    # Parameters
+    tensor : `torch.FloatTensor`, required.
+        A tensor of arbitrary size.
+    dim : `int`, optional (default = `-1`)
+        The dimension of the tensor to apply the logsumexp to.
+    keepdim: `bool`, optional (default = `False`)
+        Whether to retain a dimension of size one at the dimension we reduce over.
+    """
+    max_score, _ = tensor.max(dim, keepdim=keepdim)
+    if keepdim:
+        stable_vec = tensor - max_score
+    else:
+        stable_vec = tensor - max_score.unsqueeze(dim)
+    return max_score + (stable_vec.exp().sum(dim, keepdim=keepdim)).log()
+
+
+def info_value_of_dtype(dtype: torch.dtype):
+    """
+    Returns the `finfo` or `iinfo` object of a given PyTorch data type. Does not allow torch.bool.
+    """
+    if dtype == torch.bool:
+        raise TypeError("Does not support torch.bool")
+    elif dtype.is_floating_point:
+        return torch.finfo(dtype)
+    else:
+        return torch.iinfo(dtype)
+
+
+def min_value_of_dtype(dtype: torch.dtype):
+    """
+    Returns the minimum value of a given PyTorch data type. Does not allow torch.bool.
+    """
+    return info_value_of_dtype(dtype).min
+
+
+def replace_masked_values_with_big_negative_number(x: torch.Tensor, mask: torch.Tensor):
+    """
+    Replace the masked values in a tensor something really negative so that they won't
+    affect a max operation.
+    """
+    return x.masked_fill(~mask, min_value_of_dtype(x.dtype))
+
+

@@ -53,7 +53,8 @@ class QANet(nn.Module):
         self.modeling_resizing_layer = nn.Linear(4 * hidden_size, hidden_size)
 
         # Should be 7 but I have memory issues
-        self.modeling_encoder_blocks = nn.ModuleList([EncoderBlock(device, hidden_size, len_sentence=c_max_len, p_dropout=0.1) for _ in range(6)])
+        self.modeling_encoder_blocks = nn.ModuleList([EncoderBlock(device, hidden_size, len_sentence=c_max_len, p_dropout=0.1) \
+                                             for _ in range(6)])
 
         self.pointer = Pointer(hidden_size) # return start and end spans
 

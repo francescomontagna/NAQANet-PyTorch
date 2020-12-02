@@ -310,7 +310,7 @@ def process_file(filename, data_type, word_counter, char_counter, debug = False)
                     # Support count number 0 ~ max_count
                     # Does not support float
                     numbers_for_count = list(range(max_count))
-                    valid_counts = find_valid_counts(numbers_for_count, target_numbers)
+                    valid_counts = find_valid_counts(numbers_for_count, target_numbers) # valid indices
 
 
                 # -1 if no answer is provided
