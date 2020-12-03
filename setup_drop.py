@@ -330,18 +330,6 @@ def process_file(filename, data_type, word_counter, char_counter, debug = False)
                     start_indices.append(span[0])
                     end_indices.append(span[1])
 
-                # type_to_answer_map = {
-                #     "passage_span": valid_passage_spans,
-                #     "addition_subtraction": valid_signs_for_add_sub_expressions,
-                #     "counting": valid_counts,
-
-                # answer_info = {
-                #     "answer_texts": answer_texts,  # this `answer_texts` will not be used for evaluation
-                #     "answer_passage_spans": valid_passage_spans,
-                #     "signs_for_add_sub_expressions": valid_signs_for_add_sub_expressions,
-                #     "counts": valid_counts,
-                # }
-
                 # single question answer pair
                 example = {"context_tokens": passage_tokens,
                             "context_chars": passage_chars,
@@ -351,11 +339,18 @@ def process_file(filename, data_type, word_counter, char_counter, debug = False)
                             "start_indices": start_indices,
                             "end_indices": end_indices,
                             "counts": valid_counts,
-                            "add_sub_expressions": valid_signs_for_add_sub_expressions
+                            "add_sub_expressions": valid_signs_for_add_sub_expressions,
+                            "id": total
                             }
 
                 # If changes are needed compare with https://github.com/huminghao16/MTMSN/blob/master/drop/drop_utils.py
                 examples.append(example)
+                eval_examples[str(total)] = {
+                            "context": passage,
+                            "question": ques,
+                            "spans": spans,
+                            "answer": answer_annotation
+                }
 
             if debug:
                 # print answer info of the examples
@@ -369,7 +364,7 @@ def process_file(filename, data_type, word_counter, char_counter, debug = False)
                 if len(examples) > DEBUG_THRESHOLD:
                     break
     
-    return examples
+    return examples, eval_examples
 
 
 # Used both for word and char embeddings. # No changes
@@ -577,31 +572,31 @@ def pre_process(args, debug = False):
     char_counter = Counter()
     
     # process training dataset
-    train_examples = process_file(args.train_file, "train", word_counter, char_counter, debug = debug)
+    train_examples, train_eval = process_file(args.train_file, "train", word_counter, char_counter, debug = debug)
     word_emb_mat, word2idx_dict = get_embedding(word_counter, "word",
         emb_file=args.glove_path, vec_size=args.glove_dim, num_vectors=args.glove_num_vecs, debug = debug)
     char_emb_mat, char2idx_dict = get_embedding(char_counter, "char",
          emb_file=None, vec_size=args.char_dim, debug = debug)
 
     # process dev dataset
-    eval_examples = process_file(args.dev_file, "dev", word_counter, char_counter, debug = debug)
+    dev_examples, dev_eval = process_file(args.dev_file, "dev", word_counter, char_counter, debug = debug)
 
     if debug:
         build_features(args, train_examples, "train", args.train_record_file, word2idx_dict, char2idx_dict, debug = debug)
-        dev_meta = build_features(args, eval_examples, "dev", args.dev_record_file, word2idx_dict, char2idx_dict, debug = debug)
+        dev_meta = build_features(args, dev_examples, "dev", args.dev_record_file, word2idx_dict, char2idx_dict, debug = debug)
 
     # build golden files
     if not debug:
         build_features(args, train_examples, "train", args.train_record_file, word2idx_dict, char2idx_dict)
-        dev_meta = build_features(args, eval_examples, "dev", args.dev_record_file, word2idx_dict, char2idx_dict)
+        dev_meta = build_features(args, dev_examples, "dev", args.dev_record_file, word2idx_dict, char2idx_dict)
 
         # save generated files
         save(args.word_emb_file, word_emb_mat, message="word embedding")
         save(args.char_emb_file, char_emb_mat, message="char embedding")
 
         # TODO decide eval dict form and define it in process_file
-        # save(args.train_eval_file, train_eval, message="train eval")
-        # save(args.dev_eval_file, dev_eval, message="dev eval")
+        save(args.train_eval_file, train_eval, message="train eval")
+        save(args.dev_eval_file, dev_eval, message="dev eval")
         save(args.word2idx_file, word2idx_dict, message="word dictionary")
         save(args.char2idx_file, char2idx_dict, message="char dictionary")
         save(args.dev_meta_file, dev_meta, message="dev meta")

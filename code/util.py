@@ -791,5 +791,3 @@ def replace_masked_values_with_big_negative_number(x: torch.Tensor, mask: torch.
     affect a max operation.
     """
     return x.masked_fill(~mask, min_value_of_dtype(x.dtype))
-
-

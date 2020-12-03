@@ -106,7 +106,7 @@ class NAQANet(QANet):
                 nn.ReLU()
             )
 
-    def forward(self, cw_idxs, cc_idxs, qw_idxs, qc_idxs, number_indices, 
+    def forward(self, cw_idxs, cc_idxs, qw_idxs, qc_idxs, number_indices, ids,
                 answer_start_as_passage_spans: torch.LongTensor = None,
                 answer_end_as_passage_spans: torch.LongTensor = None,
                 answer_as_counts: torch.LongTensor = None,
@@ -255,6 +255,8 @@ class NAQANet(QANet):
             # Shape: (batch_size, 2)
             best_passage_span = get_best_span(passage_span_start_logits, passage_span_end_logits)
             print(f"Best_span: {best_passage_span}")
+            for bs in best_passage_span:
+                
             # Shape: (batch_size, 2)
             best_passage_start_log_probs = torch.gather(
                 passage_span_start_log_probs, 1, best_passage_span[:, 0].unsqueeze(-1)
