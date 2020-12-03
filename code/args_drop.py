@@ -151,11 +151,11 @@ def get_train_args():
     # model
     parser.add_argument(
         '--context_limit',
-        default=5000, type=int,
+        default=1926, type=int,
         help='maximum context token number')
     parser.add_argument(
         '--question_limit',
-        default=1000, type=int,
+        default=70, type=int,
         help='maximum question token number')
     parser.add_argument(
         '--answer_limit',
@@ -169,6 +169,10 @@ def get_train_args():
         '--num_head',
         default=8, type=int,
         help='attention num head')
+    parser.add_argument(
+        '--max_count',
+        default=50000, type=int,
+        help='maximum counting ability of the network')
 
     # cuda
     parser.add_argument(
@@ -186,8 +190,8 @@ def get_train_args():
     # train & evaluate
     parser.add_argument(
         '-b', '--batch_size',
-        default=32, type=int,
-        help='mini-batch size (default: 32)')
+        default=16, type=int,
+        help='mini-batch size (default: 16)')
     parser.add_argument(
         '-e', '--epochs',
         default=30, type=int,
@@ -198,7 +202,7 @@ def get_train_args():
         help = 'dropout probability between layers')
     parser.add_argument('--eval_steps',
         type=int,
-        default=87561,
+        default=77409,
         help='Number of steps between successive evaluations.')
     
     # metrics & checkpoints

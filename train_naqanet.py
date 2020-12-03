@@ -25,33 +25,10 @@ from tqdm import tqdm
 from ujson import load as json_load
 
 import code.util as util
-from code.util import collate_fn, SQuAD, convert_tokens, discretize
-from code.args import get_train_args
+from code.args_drop import get_train_args
 from code.model.naqanet import NAQANet
-
-# TODO In realta devo agire sul testo, oerche mancano molti numeri nei word_emb
-def get_number_idxs(word2idx_file: str):
-    """
-    :param word2idx_path: path of word2idxs.json file, mapping word into vocbulary indices
-    """
-    
-    with open(word2idx_file, 'r') as file:
-        data = file.read()
-    word2idx = json.loads(data)
-    
-    number_indices = [] # idx associated to numbers
-    regex = re.compile('[+-]?[0-9]+\.[0-9]+') # for float
-    for key, value in word2idx.items():
-        if key.isdigit() or regex.search(key):
-            number_indices.append(value)
-        else:
-            try:
-                words2num(key)
-                number_indices.append(value)
-            except:
-                pass
-
-    return number_indices
+from code.dataset.drop import collate_fn, DROP
+from code.drop_eval.drop_metric import eval_dicts
 
 
 def main(args):
@@ -77,8 +54,6 @@ def main(args):
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
 
-    # Set list with number indices in the vocabulary. Sorted
-    number_emb_idxs = get_number_idxs(args.word2idx_file)
 
     # Get embeddings
     log.info('Loading embeddings...')
@@ -87,7 +62,12 @@ def main(args):
 
     # Get model
     log.info('Building model...')
-    model = NAQANet(device, word_vectors, char_vectors)
+    model = NAQANet(device, word_vectors, char_vectors,
+        c_max_len = args.context_limit,
+        q_max_len = args.question_limit,
+        answering_abilities = ['passage_span_extraction', 'counting'],
+        max_count = args.max_count) # doesn't large max_count lead to meaningless probability?
+
     if args.load_path:
         log.info(f'Loading checkpoint from {args.load_path}...')
         model, step = util.load_model(model, args.load_path, args.gpu_ids)
@@ -115,9 +95,6 @@ def main(args):
     cr = lr / math.log(warm_up)
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda ee: cr * math.log(ee + 1) if ee < warm_up else lr)
 
-    # set loss
-    criterion = nn.NLLLoss(reduction = 'mean') # LogSoftmax applied in Pointer
-
     # Get data loader
     log.info('Building dataset...')
     train_dataset = DROP(args.train_record_file)
@@ -142,7 +119,11 @@ def main(args):
         log.info(f'Starting epoch {epoch}...')
         with torch.enable_grad(), \
                 tqdm(total=len(train_loader.dataset)) as progress_bar:
-            for cw_idxs, cc_idxs, qw_idxs, qc_idxs, y1, y2, ids in train_loader:
+            for cw_idxs, cc_idxs, \
+                    qw_idxs, qc_idxs, \
+                    number_idxs, start_idxs, end_idxs, \
+                    counts, add_sub_expressions, ids  in train_loader:
+
                 # Setup for forward
                 cw_idxs = cw_idxs.to(device)
                 cc_idxs = cc_idxs.to(device)
@@ -152,9 +133,11 @@ def main(args):
                 optimizer.zero_grad()
 
                 # Forward
-                log_p1, log_p2 = model(cw_idxs, cc_idxs, qw_idxs, qc_idxs, number_indices)
-                y1, y2 = y1.to(device), y2.to(device)
-                loss = criterion(log_p1, y1) + criterion(log_p2, y2)
+                model(cw_idxs, cc_idxs,
+                       qw_idxs, qc_idxs, ids,
+                       number_idxs, start_idxs, end_idxs, counts)
+
+                loss = output_dict["loss"]
                 loss_val = loss.item()
 
                 # Backward
@@ -182,9 +165,7 @@ def main(args):
                     log.info(f'Evaluating at step {step}...')
                     ema.assign(model)
                     results, pred_dict = evaluate(model, dev_loader, device,
-                                                  args.dev_eval_file,
-                                                  args.max_ans_len,
-                                                  args.use_squad_v2)
+                                                  args.dev_eval_file)
                     saver.save(step, model, results[args.metric_name], device)
                     ema.resume(model)
 
@@ -204,8 +185,8 @@ def main(args):
                                    num_visuals=args.num_visuals)
 
 
-def evaluate(model, data_loader, device, eval_file, max_len, use_squad_v2):
-    nll_meter = util.AverageMeter()
+def evaluate(model, data_loader, device, eval_file):
+    nll_meter = util.AverageMeter() # ?
 
     model.eval()
     pred_dict = {}
@@ -214,7 +195,11 @@ def evaluate(model, data_loader, device, eval_file, max_len, use_squad_v2):
     with torch.no_grad(), \
             tqdm(total=len(data_loader.dataset)) as progress_bar:
         model.eval_data = gold_dict # pass eval_data as model state
-        for cw_idxs, cc_idxs, qw_idxs, qc_idxs, y1, y2, ids in data_loader:
+        for cw_idxs, cc_idxs, \
+                qw_idxs, qc_idxs, \
+                number_idxs, start_idxs, end_idxs, \
+                counts, add_sub_expressions, ids   in data_loader:
+
             # Setup for forward
             cw_idxs = cw_idxs.to(device)
             cc_idxs = cc_idxs.to(device)
@@ -223,38 +208,31 @@ def evaluate(model, data_loader, device, eval_file, max_len, use_squad_v2):
             batch_size = cw_idxs.size(0)
 
             # Forward
-            log_p1, log_p2 = model(cw_idxs, cc_idxs, qw_idxs, qc_idxs)
-            y1, y2 = y1.to(device), y2.to(device)
-            loss = F.nll_loss(log_p1, y1) + F.nll_loss(log_p2, y2)
+            model(cw_idxs, cc_idxs,
+                       qw_idxs, qc_idxs, ids,
+                       number_idxs, start_idxs, end_idxs, counts)
+            loss = output_dict['loss']
             nll_meter.update(loss.item(), batch_size)
 
             # Get F1 and EM scores
-            p1, p2 = log_p1.exp(), log_p2.exp()
-            starts, ends = discretize(p1, p2, max_len, use_squad_v2)
 
             # Log info
             progress_bar.update(batch_size)
             progress_bar.set_postfix(NLL=nll_meter.avg)
 
-            preds, _ = convert_tokens(gold_dict,
-                                           ids.tolist(),
-                                           starts.tolist(),
-                                           ends.tolist(),
-                                           use_squad_v2)
-            pred_dict.update(preds)
+            pred_dict.update(output_dict["predictions"])
 
     model.eval_data = None
     model.train()
 
-    results = util.eval_dicts(gold_dict, pred_dict, use_squad_v2)
-    results_list = [('NLL', nll_meter.avg),
-                    ('F1', results['F1']),
-                    ('EM', results['EM'])]
-    if use_squad_v2:
-        results_list.append(('AvNA', results['AvNA']))
-    results = OrderedDict(results_list)
+    eval_dict = eval_dicts(gold_dict, pred_dict,)
+    results_list = [('Loss', nll_meter.avg),
+                    ('F1', eval_dict['F1']),
+                    ('EM', eval_dict['EM'])]
+    
+    eval_dict = OrderedDict(results_list)
 
-    return results, pred_dict
+    return eval_dict, pred_dict
 
 
 if __name__ == '__main__':

@@ -38,7 +38,7 @@ class DROP(data.Dataset):
         self.end_idxs = torch.from_numpy(dataset['end_idxs']).long()
         self.counts = torch.from_numpy(dataset['counts']).long()
         self.add_sub_expressions = torch.from_numpy(dataset['add_sub_expressions']).long()
-        # self.query_ids = torch.from_numpy(dataset['query_ids']).long()
+        self.ids = torch.from_numpy(dataset['ids']).long()
 
     def __getitem__(self, idx):
         example = (self.context_idxs[idx],
@@ -49,8 +49,9 @@ class DROP(data.Dataset):
                    self.start_idxs[idx],
                    self.end_idxs[idx],
                    self.counts[idx],
-                   self.add_sub_expressions[idx]
-                   ) # query id ?
+                   self.add_sub_expressions[idx],
+                   self.ids[idx]
+                   )
 
         return example
 
@@ -65,11 +66,11 @@ def collate_fn(examples):
     Args:
         examples (list): List of tuples of the form (context_idxs, context_char_idxs,
         question_idxs, question_char_idxs, number_indices, start_indices, end_indices
-        counts, add_sub_expressions).
+        counts, add_sub_expressions, ids).
     Returns:
         examples (tuple): Tuple of tensors (context_idxs, context_char_idxs,
         question_idxs, question_char_idxs, number_indices, start_indices, end_indices
-        counts, add_sub_expressions). All of shape (batch_size, ...), where
+        counts, add_sub_expressions, ids). All of shape (batch_size, ...), where
         the remaining dimensions are the maximum length of examples in the input.
     Adapted from:
         https://github.com/yunjey/seq2seq-dataloader
@@ -106,7 +107,7 @@ def collate_fn(examples):
         question_idxs, question_char_idxs, \
         number_indices, start_indices, \
         end_indices, counts, \
-        add_sub_expressions = zip(*examples)
+        add_sub_expressions, ids = zip(*examples)
 
     # Merge into batch tensors
     context_idxs = merge_1d(context_idxs)
@@ -120,10 +121,12 @@ def collate_fn(examples):
     counts = merge_0d(counts) # TODO check
     add_sub_expressions = merge_2d(add_sub_expressions, pad_value = -1)
 
+    ids = merge_0d(ids)
+
     return (context_idxs, context_char_idxs,
             question_idxs, question_char_idxs,
-            number_indices, start_indices, counts,
-            add_sub_expressions
+            number_indices, start_indices, end_indices,
+            counts, add_sub_expressions, ids
             )
 
 if __name__ == "__main__":
@@ -143,17 +146,19 @@ if __name__ == "__main__":
                                  collate_fn=collate_fn)
     print("Done!")
 
-    for example in train_loader:
+    for i, example in enumerate(dev_loader):
         context_idxs, context_char_idxs, \
         question_idxs, question_char_idxs, \
-        number_indices, start_indices, counts, \
-        add_sub_expressions = example
+        number_indices, start_indices, end_indices, \
+        counts, add_sub_expressions, ids = example
 
         print(add_sub_expressions.size())
         print(start_indices.size())
         print(context_idxs.size())
         print(question_char_idxs.size())
+        print(end_indices.size())
         print(counts.size())
+        print(ids.size())
         
         if i >= 3:
             break

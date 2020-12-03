@@ -77,7 +77,6 @@ class QANet(nn.Module):
         X = self.cq_attention(cb, qb, self.c_mask_c2q, self.q_mask_c2q)
         self.passage_aware_rep = self.modeling_resizing_layer(X)
 
-        # TODO stack of encoders
         modeled_passage_list = [self.modeling_resizing_layer(X)]
         modeled_passage = modeled_passage_list[-1]
         for _ in range(3):

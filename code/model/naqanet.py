@@ -10,11 +10,11 @@ from code.modules.pointer import Pointer
 from code.modules.cq_attention import CQAttention
 from code.modules.embeddings import Embedding
 from code.modules.utils import set_mask
+from code.drop_eval.drop_metric import eval_dicts, convert_tokens
 from code.util import (torch_from_json, masked_softmax, get_best_span, \
  replace_masked_values_with_big_negative_number)
 from code.model.qanet import QANet
 from code import util
-from code.drop_eval.drop_metric import eval_dicts, convert_tokens
 
 # Debug only
 EVAL_EXAMPLE =  dict()
@@ -69,6 +69,10 @@ class NAQANet(QANet):
         self.passage_weights_layer = nn.Linear(hidden_size, 1)
         self.question_weights_layer = nn.Linear(hidden_size, 1)
 
+        # overwrite to avoid memory issues
+        self.modeling_encoder_blocks = nn.ModuleList([EncoderBlock(device, hidden_size, len_sentence=c_max_len, p_dropout=0.1) \
+                                             for _ in range(1)])
+
         # answer type predictor
         if len(self.answering_abilities) > 1:
             self.answer_ability_predictor = nn.Sequential(
@@ -119,7 +123,8 @@ class NAQANet(QANet):
                 nn.ReLU()
             )
 
-    def forward(self, cw_idxs, cc_idxs, qw_idxs, qc_idxs, number_indices, ids,
+    def forward(self, cw_idxs, cc_idxs, qw_idxs, qc_idxs, ids,
+                number_indices = None,
                 answer_start_as_passage_spans: torch.LongTensor = None,
                 answer_end_as_passage_spans: torch.LongTensor = None,
                 answer_as_counts: torch.LongTensor = None,
@@ -289,7 +294,6 @@ class NAQANet(QANet):
         # If answer is given, compute the loss.
         if (
             answer_start_as_passage_spans is not None
-            or answer_as_question_spans is not None
             or answer_as_add_sub_expressions is not None
             or answer_as_counts is not None
         ):
@@ -366,8 +370,7 @@ class NAQANet(QANet):
 
             output_dict["loss"] = -marginal_log_likelihood.mean()
 
-        # if self.eval_data: # False if None 
-        if True:
+        if self.eval_data:
             for i in range(batch_size):
 
                 id = ids[i].item()
@@ -383,12 +386,10 @@ class NAQANet(QANet):
                 if predicted_ability_str == "passage_span_extraction":
                     start = best_passage_span[i, 0]
                     end = best_passage_span[i, 1]
-                    print(f"ids: {id}")
                     preds = convert_tokens(self.eval_data,
                                            id,
                                            start.item(),
                                            end.item())
-                    print(f"preds: {preds}")
                     try:
                         output_dict["predictions"][str(id)] = preds
                     except KeyError:
@@ -420,9 +421,9 @@ if __name__ == "__main__":
         cemb_vocab_size = 94
         cemb_dim = 64
         d_model = 128
-        batch_size = 16
+        batch_size = 2
         q_max_len = 6
-        c_max_len = 10
+        c_max_len = 100
         spans_limit = 6
         num_limit = 5
         char_dim = 16
@@ -448,6 +449,17 @@ if __name__ == "__main__":
         counts = torch.zeros(batch_size).long() -1
 
         ids = torch.tensor(range(0, batch_size))
+
+        print("Example sizes")
+        print(f"context_wids: {context_wids.size()}")
+        print(f"context_cids: {context_cids.size()}")
+        print(f"question_wids: {question_wids.size()}")
+        print(f"question_cids: {question_cids.size()}")
+        print(f"number_indices: {number_indices.size()}")
+        print(f"start_indices: {start_indices.size()}")
+        print(f"end_indices: {end_indices.size()}")
+        print(f"counts: {counts.size()}")
+        print(f"ids: {ids.size()}")
 
         for i in range(batch_size):
             question_wids[i, 0:question_lengths[i]] = \
@@ -489,11 +501,22 @@ if __name__ == "__main__":
             else:
                 EVAL_EXAMPLE[str(i)] = EVAL_EXAMPLE['1']
 
-        model.eval_data = EVAL_EXAMPLE
-
+        # train
         output_dict = model(context_wids, context_cids,
-                       question_wids, question_cids, number_indices,
-                       ids, start_indices, end_indices, counts)
+                       question_wids, question_cids, ids,
+                       number_indices, start_indices, end_indices, counts)
+
+        loss = output_dict["loss"]
+        print(f"Training Loss: {loss.item()}")
+
+
+        # eval
+        model.eval_data = EVAL_EXAMPLE
+        output_dict = model(context_wids, context_cids,
+                       question_wids, question_cids, ids,
+                       number_indices, start_indices, end_indices, counts)
+
+        loss = output_dict["loss"]
         
         print(f"Output dictionary: {output_dict}\n")
 

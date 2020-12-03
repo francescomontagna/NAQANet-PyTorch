@@ -350,6 +350,7 @@ def process_file(filename, data_type, word_counter, char_counter, debug = False)
                             "question": ques,
                             "spans": spans,
                             "answer": answer_annotation
+                            # "uuid": qa_pair["query_id"] # for submisison only
                 }
 
             if debug:
@@ -449,6 +450,7 @@ def build_features(args, examples, data_type, out_file, word2idx_dict, char2idx_
     end_idxs = []
     tot_counts = []
     tot_add_sub_expressions = []
+    ids = []
 
     print(f"Len examples: {len(examples)}")
     for n, example in tqdm(enumerate(examples)):
@@ -525,6 +527,8 @@ def build_features(args, examples, data_type, out_file, word2idx_dict, char2idx_
                 add_sub_expressions[i, j] = sign
         tot_add_sub_expressions.append(add_sub_expressions)
 
+        ids.append(example["id"])
+
 
         # new_add_sub_expressions = []
         # for add_sub_expression in example["add_sub_expressions"]:
@@ -555,7 +559,8 @@ def build_features(args, examples, data_type, out_file, word2idx_dict, char2idx_
                 start_idxs=np.array(start_idxs), 
                 end_idxs=np.array(end_idxs),
                 counts=np.array(tot_counts), 
-                add_sub_expressions=np.array(tot_add_sub_expressions))
+                add_sub_expressions=np.array(tot_add_sub_expressions),
+                ids=np.array(ids))
     print(f"Built {total} / {total_} instances of features in total")
     meta["total"] = total
     return meta
@@ -586,6 +591,17 @@ def pre_process(args, debug = False):
         build_features(args, train_examples, "train", args.train_record_file, word2idx_dict, char2idx_dict, debug = debug)
         dev_meta = build_features(args, dev_examples, "dev", args.dev_record_file, word2idx_dict, char2idx_dict, debug = debug)
 
+        # save generated files
+        save(args.word_emb_file, word_emb_mat, message="word embedding")
+        save(args.char_emb_file, char_emb_mat, message="char embedding")
+
+        # TODO decide eval dict form and define it in process_file
+        save(args.train_eval_file, train_eval, message="train eval")
+        save(args.dev_eval_file, dev_eval, message="dev eval")
+        save(args.word2idx_file, word2idx_dict, message="word dictionary")
+        save(args.char2idx_file, char2idx_dict, message="char dictionary")
+        save(args.dev_meta_file, dev_meta, message="dev meta")
+
     # build golden files
     if not debug:
         build_features(args, train_examples, "train", args.train_record_file, word2idx_dict, char2idx_dict)
@@ -606,7 +622,7 @@ def pre_process(args, debug = False):
 if __name__ == "__main__":
 
     # Set to True for debugging
-    debug = True
+    debug = False
 
     # Get command-line args
     args = get_setup_drop_args()
