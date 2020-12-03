@@ -353,6 +353,7 @@ def process_file(filename, data_type, word_counter, char_counter, debug = False)
                 }
 
             if debug:
+                print(f"Eval Example: {eval_examples[list(eval_examples.keys())[0]]}")
                 # print answer info of the examples
                 if DEBUG_THRESHOLD < 10:
                     print(f"number_indices: {number_indices}")
@@ -605,7 +606,7 @@ def pre_process(args, debug = False):
 if __name__ == "__main__":
 
     # Set to True for debugging
-    debug = False
+    debug = True
 
     # Get command-line args
     args = get_setup_drop_args()

@@ -649,17 +649,14 @@ def convert_tokens(eval_dict, qa_id, y_start_list, y_end_list, no_answer=True):
     for qid, y_start, y_end in zip(qa_id, y_start_list, y_end_list):
         context = eval_dict[str(qid)]["context"]
         spans = eval_dict[str(qid)]["spans"]
-        uuid = eval_dict[str(qid)]["uuid"]
         if no_answer and (y_start == 0 or y_end == 0):
             pred_dict[str(qid)] = ''
-            sub_dict[uuid] = ''
         else:
             if no_answer:
                 y_start, y_end = y_start - 1, y_end - 1
             start_idx = spans[y_start][0]
             end_idx = spans[y_end][1]
             pred_dict[str(qid)] = context[start_idx: end_idx]
-            sub_dict[uuid] = context[start_idx: end_idx]
     return pred_dict, sub_dict
 
 

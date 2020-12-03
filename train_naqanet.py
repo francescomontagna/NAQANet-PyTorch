@@ -213,6 +213,7 @@ def evaluate(model, data_loader, device, eval_file, max_len, use_squad_v2):
         gold_dict = json_load(fh)
     with torch.no_grad(), \
             tqdm(total=len(data_loader.dataset)) as progress_bar:
+        model.eval_data = gold_dict # pass eval_data as model state
         for cw_idxs, cc_idxs, qw_idxs, qc_idxs, y1, y2, ids in data_loader:
             # Setup for forward
             cw_idxs = cw_idxs.to(device)
@@ -242,6 +243,7 @@ def evaluate(model, data_loader, device, eval_file, max_len, use_squad_v2):
                                            use_squad_v2)
             pred_dict.update(preds)
 
+    model.eval_data = None
     model.train()
 
     results = util.eval_dicts(gold_dict, pred_dict, use_squad_v2)
