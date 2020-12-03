@@ -106,11 +106,12 @@ class NAQANet(QANet):
                 nn.ReLU()
             )
 
-    def forward(self, cw_idxs, cc_idxs, qw_idxs, qc_idxs, number_indices, ids,
+    def forward(self, cw_idxs, cc_idxs, qw_idxs, qc_idxs, number_indices,
                 answer_start_as_passage_spans: torch.LongTensor = None,
                 answer_end_as_passage_spans: torch.LongTensor = None,
                 answer_as_counts: torch.LongTensor = None,
-                answer_as_add_sub_expressions: torch.LongTensor = None):
+                answer_as_add_sub_expressions: torch.LongTensor = None,
+                eval_data = None):
 
         spans_start, spans_end = super().forward(cw_idxs, cc_idxs, qw_idxs, qc_idxs)
 
@@ -129,6 +130,7 @@ class NAQANet(QANet):
             answer_ability_log_probs = torch.nn.functional.log_softmax(answer_ability_logits, -1)
             # Shape: (batch_size,)
             best_answer_ability = torch.argmax(answer_ability_log_probs, 1)
+            print(best_answer_ability)
 
         if "counting" in self.answering_abilities:
             # Shape: (batch_size, self.max_count)
@@ -254,8 +256,6 @@ class NAQANet(QANet):
             )
             # Shape: (batch_size, 2)
             best_passage_span = get_best_span(passage_span_start_logits, passage_span_end_logits)
-            print(f"Best_span: {best_passage_span}")
-            for bs in best_passage_span:
                 
             # Shape: (batch_size, 2)
             best_passage_start_log_probs = torch.gather(
@@ -352,6 +352,19 @@ class NAQANet(QANet):
                 marginal_log_likelihood = log_marginal_likelihood_list[0]
 
             output_dict["loss"] = -marginal_log_likelihood.mean()
+
+        if eval_data: # False if None
+
+            for i in range(self.batch_size):
+                if len(self.answering_abilities) > 1:
+                        predicted_ability_str = self.answering_abilities[
+                            best_answer_ability[i].detach().cpu().numpy()
+                        ]
+                else:
+                    predicted_ability_str = self.answering_abilities[0]
+
+                if predicted_ability_str == "passage_span_extraction":
+                    pass
 
         return output_dict
         
