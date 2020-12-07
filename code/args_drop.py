@@ -171,7 +171,7 @@ def get_train_args():
         help='attention num head')
     parser.add_argument(
         '--max_count',
-        default=50000, type=int,
+        default=100000, type=int,
         help='maximum counting ability of the network')
 
     # cuda

@@ -127,8 +127,7 @@ class NAQANet(QANet):
                 number_indices = None,
                 answer_start_as_passage_spans: torch.LongTensor = None,
                 answer_end_as_passage_spans: torch.LongTensor = None,
-                answer_as_counts: torch.LongTensor = None,
-                answer_as_add_sub_expressions: torch.LongTensor = None):
+                answer_as_counts: torch.LongTensor = None):
 
         batch_size = cw_idxs.size(0)
 

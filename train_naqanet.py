@@ -74,7 +74,7 @@ def main(args):
     else:
         step = 0
     
-    model = nn.DataParallel(model, args.gpu_ids)
+    # model = nn.DataParallel(model, args.gpu_ids)
     model = model.to(device)
     model.train()
     ema = util.EMA(model, args.decay)
@@ -122,18 +122,23 @@ def main(args):
             for cw_idxs, cc_idxs, \
                     qw_idxs, qc_idxs, \
                     number_idxs, start_idxs, end_idxs, \
-                    counts, add_sub_expressions, ids  in train_loader:
+                    counts, ids  in train_loader:
 
                 # Setup for forward
                 cw_idxs = cw_idxs.to(device)
                 cc_idxs = cc_idxs.to(device)
                 qw_idxs = qw_idxs.to(device)
                 qc_idxs = qc_idxs.to(device)
+                number_idxs = number_idxs.to(device) # TODO remove
+                start_idxs = start_idxs.to(device)
+                end_idxs = end_idxs.to(device)
+                counts = counts.to(device)
+                ids = ids.to(device)
                 batch_size = cw_idxs.size(0)
                 optimizer.zero_grad()
 
                 # Forward
-                model(cw_idxs, cc_idxs,
+                output_dict = model(cw_idxs, cc_idxs,
                        qw_idxs, qc_idxs, ids,
                        number_idxs, start_idxs, end_idxs, counts)
 
@@ -198,7 +203,7 @@ def evaluate(model, data_loader, device, eval_file):
         for cw_idxs, cc_idxs, \
                 qw_idxs, qc_idxs, \
                 number_idxs, start_idxs, end_idxs, \
-                counts, add_sub_expressions, ids   in data_loader:
+                counts, ids   in data_loader:
 
             # Setup for forward
             cw_idxs = cw_idxs.to(device)

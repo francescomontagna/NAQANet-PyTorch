@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 from code.args_drop import get_setup_drop_args # TODO put everything in single .py file
 
-max_count = 100000
+max_count = get_setup_drop_args().max_count
 DEBUG_THRESHOLD = 100
 
 def download_url(url, output_path, show_progress=True):

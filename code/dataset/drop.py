@@ -4,7 +4,7 @@ import numpy as np
 
 from code.args_drop import get_train_args
 
-# TODO: turn it into drop
+
 class DROP(data.Dataset):
     """Stanford Question Answering Dataset (SQuAD).
     Each item in the dataset is a tuple with the following entries (in order):
@@ -37,7 +37,7 @@ class DROP(data.Dataset):
         self.start_idxs = torch.from_numpy(dataset['start_idxs']).long()
         self.end_idxs = torch.from_numpy(dataset['end_idxs']).long()
         self.counts = torch.from_numpy(dataset['counts']).long()
-        self.add_sub_expressions = torch.from_numpy(dataset['add_sub_expressions']).long()
+        # self.add_sub_expressions = torch.from_numpy(dataset['add_sub_expressions']).long()
         self.ids = torch.from_numpy(dataset['ids']).long()
 
     def __getitem__(self, idx):
@@ -49,7 +49,7 @@ class DROP(data.Dataset):
                    self.start_idxs[idx],
                    self.end_idxs[idx],
                    self.counts[idx],
-                   self.add_sub_expressions[idx],
+                #    self.add_sub_expressions[idx],
                    self.ids[idx]
                    )
 
@@ -107,7 +107,7 @@ def collate_fn(examples):
         question_idxs, question_char_idxs, \
         number_indices, start_indices, \
         end_indices, counts, \
-        add_sub_expressions, ids = zip(*examples)
+        ids = zip(*examples)
 
     # Merge into batch tensors
     context_idxs = merge_1d(context_idxs)
@@ -119,14 +119,14 @@ def collate_fn(examples):
     start_indices = merge_1d(start_indices, pad_value = -1)
     end_indices = merge_1d(end_indices, pad_value = -1)
     counts = merge_0d(counts) # TODO check
-    add_sub_expressions = merge_2d(add_sub_expressions, pad_value = -1)
+    # add_sub_expressions = merge_2d(add_sub_expressions, pad_value = -1)
 
     ids = merge_0d(ids)
 
     return (context_idxs, context_char_idxs,
             question_idxs, question_char_idxs,
             number_indices, start_indices, end_indices,
-            counts, add_sub_expressions, ids
+            counts, ids
             )
 
 if __name__ == "__main__":
@@ -150,9 +150,9 @@ if __name__ == "__main__":
         context_idxs, context_char_idxs, \
         question_idxs, question_char_idxs, \
         number_indices, start_indices, end_indices, \
-        counts, add_sub_expressions, ids = example
+        counts, ids = example
 
-        print(add_sub_expressions.size())
+        # print(add_sub_expressions.size())
         print(start_indices.size())
         print(context_idxs.size())
         print(question_char_idxs.size())
