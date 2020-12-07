@@ -74,7 +74,7 @@ def main(args):
     else:
         step = 0
     
-    # model = nn.DataParallel(model, args.gpu_ids)
+    model = nn.DataParallel(model, args.gpu_ids)
     model = model.to(device)
     model.train()
     ema = util.EMA(model, args.decay)
@@ -114,6 +114,8 @@ def main(args):
     log.info('Training...')
     steps_till_eval = args.eval_steps
     epoch = step // len(train_dataset)
+    print(f"CUDA memory allocated: {torch.cuda.memory_allocated()*1e-9} GB")
+    print(f"CUDA MAX memory allocated: {torch.cuda.max_memory_allocated()*1e-9} GB")
     while epoch != args.epochs:
         epoch += 1
         log.info(f'Starting epoch {epoch}...')

@@ -79,7 +79,7 @@ class NAQANet(QANet):
         self.passage_weights_layer = nn.Linear(hidden_size, 1)
         self.question_weights_layer = nn.Linear(hidden_size, 1)
 
-        # overwrite to avoid memory issues
+        # TODO fix
         self.modeling_encoder_blocks = nn.ModuleList([EncoderBlock(device, hidden_size, len_sentence=c_max_len, p_dropout=0.1) \
                                              for _ in range(1)])
 
