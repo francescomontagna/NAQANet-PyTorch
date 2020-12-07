@@ -1,8 +1,15 @@
+import math
+import tqdm
 import torch
 import torch.nn as nn
 import numpy as np
 
 from torch.nn.utils.rnn import pad_sequence
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+import torch.optim.lr_scheduler as sched
+import torch.utils.data as data
 
 from code.modules.encoder.encoder import EncoderBlock
 from code.modules.encoder.depthwise_conv import DepthwiseSeparableConv
@@ -14,6 +21,9 @@ from code.drop_eval.drop_metric import eval_dicts, convert_tokens
 from code.util import (torch_from_json, masked_softmax, get_best_span, \
  replace_masked_values_with_big_negative_number)
 from code.model.qanet import QANet
+from code.args_drop import get_train_args
+from code.dataset.drop import collate_fn, DROP
+import code.util as util
 from code import util
 
 # Debug only
@@ -408,9 +418,11 @@ class NAQANet(QANet):
         
 
 if __name__ == "__main__":
-    test = True
+    eval_debug = False
+    train_debug = False
+    debug_real_data = True # debug using train_dataloader
 
-    if test:
+    if eval_debug or train_debug:
         torch.manual_seed(22)
         np.random.seed(2)
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -420,12 +432,13 @@ if __name__ == "__main__":
         cemb_vocab_size = 94
         cemb_dim = 64
         d_model = 128
-        batch_size = 2
+        batch_size = 4
         q_max_len = 6
         c_max_len = 100
         spans_limit = 6
         num_limit = 5
         char_dim = 16
+        max_count = 100000
 
         # fake embedding
         wv_tensor = torch.rand(wemb_vocab_size, wemb_dim)
@@ -484,14 +497,9 @@ if __name__ == "__main__":
                 torch.LongTensor(1, spans_length[i]).random_(
                     0, c_max_len)
             counts[i] = torch.LongTensor(1).random_(
-                    -1, context_lengths[i])
+                    -1, max_count)
 
         counts = counts.unsqueeze(-1)
-
-        # define model
-        device = 'cpu'
-        model = NAQANet(device, wv_tensor, cv_tensor, 
-            answering_abilities = ['passage_span_extraction', 'counting'])
 
         # Fake evaluation dictionary
         for i in range(2, batch_size):
@@ -499,6 +507,15 @@ if __name__ == "__main__":
                 EVAL_EXAMPLE[str(i)] = EVAL_EXAMPLE['0']
             else:
                 EVAL_EXAMPLE[str(i)] = EVAL_EXAMPLE['1']
+
+
+    if eval_debug:
+
+        # define model
+        device = 'cpu'
+        model = NAQANet(device, wv_tensor, cv_tensor, 
+            answering_abilities = ['passage_span_extraction', 'counting'], max_count=max_count)
+        model.train()
 
         # train
         output_dict = model(context_wids, context_cids,
@@ -526,3 +543,141 @@ if __name__ == "__main__":
 
         print(f"F1: {F1}")
         print(F"EM: {EM}")
+
+
+
+    if train_debug: # want loss close to 0
+
+        args = get_train_args()
+
+        # define model
+        device = 'cpu'
+        model = NAQANet(device, wv_tensor, cv_tensor, 
+            answering_abilities = ['passage_span_extraction', 'counting'], max_count=max_count)
+        model = model.to(device)
+        model.train()
+        ema = util.EMA(model, args.decay)
+
+        # Get optimizer and scheduler
+        lr = args.lr
+        base_lr = 1.0
+        warm_up = args.lr_warm_up_num
+        params = filter(lambda param: param.requires_grad, model.parameters())
+        optimizer = torch.optim.Adam(lr=base_lr, betas=(args.beta1, args.beta2), eps=1e-7, weight_decay=3e-7, params=params)
+        cr = lr / math.log(warm_up)
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda ee: cr * math.log(ee + 1) if ee < warm_up else lr)
+
+        # Train
+        with torch.enable_grad():
+            # tqdm(total=len(train_loader.dataset)) as progress_bar:
+            for epoch in range(70):
+                # Setup for forward
+                context_wids = context_wids.to(device)
+                context_cids = context_cids.to(device)
+                question_wids = question_wids.to(device)
+                question_cids = question_cids.to(device)
+                number_indices = number_indices.to(device) # TODO remove
+                start_indices = start_indices.to(device)
+                end_indices = end_indices.to(device)
+                counts = counts.to(device)
+                ids = ids.to(device)
+                optimizer.zero_grad()
+
+                # Forward
+                output_dict = model(context_wids, context_cids,
+                    question_wids, question_cids, ids,
+                    number_indices, start_indices, end_indices, counts)
+
+                loss = output_dict["loss"]
+                loss_val = loss.item()
+                print(f"Loss val: {loss_val}")
+
+                # Backward
+                loss.backward()
+                nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
+                optimizer.step()
+                scheduler.step()
+                ema(model, epoch)
+
+    if debug_real_data:
+
+        args = get_train_args()
+
+        # define model
+        device = 'cpu'
+        word_vectors = util.torch_from_json(args.word_emb_file)
+        char_vectors = util.torch_from_json(args.char_emb_file)
+        model = NAQANet(device, word_vectors, char_vectors,
+            c_max_len = args.context_limit,
+            q_max_len = args.question_limit,
+            answering_abilities = ['counting'],
+            max_count = args.max_count) # doesn't large max_count lead to meaningless probability?
+        model = model.to(device)
+        model.train()
+        ema = util.EMA(model, args.decay)
+
+        # Get optimizer and scheduler
+        lr = args.lr
+        base_lr = 1.0
+        warm_up = args.lr_warm_up_num
+        params = filter(lambda param: param.requires_grad, model.parameters())
+        optimizer = torch.optim.Adam(lr=base_lr, betas=(args.beta1, args.beta2), eps=1e-7, weight_decay=3e-7, params=params)
+        cr = lr / math.log(warm_up)
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda ee: cr * math.log(ee + 1) if ee < warm_up else lr)
+
+        # Get data
+        train_dataset = DROP(args.train_record_file)
+        train_loader = data.DataLoader(train_dataset,
+                                   batch_size=args.batch_size,
+                                   shuffle=True,
+                                   num_workers=args.num_workers,
+                                   collate_fn=collate_fn)
+
+        for _ in range(3):   
+            context_wids, context_cids, \
+                question_wids, question_cids, \
+                number_indices, start_indices, end_indices, \
+                counts, ids = next(iter(train_loader))
+
+        print("Example sizes")
+        print(f"context_wids: {context_wids.size()}")
+        print(f"context_cids: {context_cids.size()}")
+        print(f"question_wids: {question_wids.size()}")
+        print(f"question_cids: {question_cids.size()}")
+        print(f"number_indices: {number_indices.size()}")
+        print(f"start_indices: {start_indices.size()}")
+        print(f"end_indices: {end_indices.size()}")
+        print(f"counts: {counts.size()}")
+        print(f"ids: {ids.size()}")
+
+        # Train
+        with torch.enable_grad():
+            # tqdm(total=len(train_loader.dataset)) as progress_bar:
+            for epoch in range(70):
+                # Setup for forward
+                context_wids = context_wids.to(device)
+                context_cids = context_cids.to(device)
+                question_wids = question_wids.to(device)
+                question_cids = question_cids.to(device)
+                number_indices = number_indices.to(device) # TODO remove
+                start_indices = start_indices.to(device)
+                end_indices = end_indices.to(device)
+                counts = counts.to(device)
+                ids = ids.to(device)
+                optimizer.zero_grad()
+
+                # Forward
+                output_dict = model(context_wids, context_cids,
+                    question_wids, question_cids, ids,
+                    number_indices, start_indices, end_indices, counts)
+
+                loss = output_dict["loss"]
+                loss_val = loss.item()
+                print(f"Loss val: {loss_val}")
+
+                # Backward
+                loss.backward()
+                nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
+                optimizer.step()
+                scheduler.step()
+                ema(model, epoch)
