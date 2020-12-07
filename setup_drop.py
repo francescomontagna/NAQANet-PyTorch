@@ -314,11 +314,11 @@ def process_file(filename, data_type, word_counter, char_counter, debug = False)
 
 
                 # -1 if no answer is provided
-                if valid_passage_spans == []:
+                if tokenized_answer_texts == [] or valid_passage_spans == []:
                     valid_passage_spans.append((-1, -1))
                 if valid_signs_for_add_sub_expressions == []:
                     valid_signs_for_add_sub_expressions.append([-1])
-                if valid_counts == []:
+                if target_numbers == [] or valid_counts == []:
                     valid_counts.append(-1)
                 if number_indices == []:
                     number_indices.append(-1)
@@ -419,8 +419,8 @@ def get_embedding(counter, data_type, limit=-1, emb_file=None, vec_size=None, nu
 
 
 def build_features(args, examples, data_type, out_file, word2idx_dict, char2idx_dict, is_test=False, debug = False):
-    para_limit = args.test_para_limit if is_test else args.para_limit
-    ques_limit = args.test_ques_limit if is_test else args.ques_limit
+    para_limit = args.test_para_limit if is_test else args.context_limit
+    ques_limit = args.test_ques_limit if is_test else args.question_limit
     ans_limit = args.ans_limit
     char_limit = args.char_limit
     num_idx_limit = args.num_idx_limit

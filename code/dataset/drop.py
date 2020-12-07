@@ -80,7 +80,8 @@ def collate_fn(examples):
 
     def merge_1d(arrays, dtype=torch.int64, pad_value=0):
         lengths = [(a != pad_value).sum() for a in arrays]
-        padded = torch.zeros(len(arrays), max(lengths), dtype=dtype) + pad_value
+        max_length = max(lengths)
+        padded = torch.zeros(len(arrays), max(max_length, 1), dtype=dtype) + pad_value
         for i, seq in enumerate(arrays):
             end = lengths[i]
             padded[i, :end] = seq[:end]
@@ -131,11 +132,12 @@ def collate_fn(examples):
 
 if __name__ == "__main__":
     args = get_train_args()
+    torch.manual_seed(224)
     print("Building datasets...", end = " ")
     train_dataset = DROP(args.train_record_file)
     train_loader = data.DataLoader(train_dataset,
                                    batch_size=args.batch_size,
-                                   shuffle=True,
+                                   shuffle=False, # True
                                    num_workers=args.num_workers,
                                    collate_fn=collate_fn)
     dev_dataset = DROP(args.dev_record_file)
@@ -146,19 +148,18 @@ if __name__ == "__main__":
                                  collate_fn=collate_fn)
     print("Done!")
 
-    for i, example in enumerate(dev_loader):
+    for i, example in enumerate(train_loader):
         context_idxs, context_char_idxs, \
         question_idxs, question_char_idxs, \
         number_indices, start_indices, end_indices, \
         counts, ids = example
 
-        # print(add_sub_expressions.size())
         print(start_indices.size())
-        print(context_idxs.size())
-        print(question_char_idxs.size())
         print(end_indices.size())
-        print(counts.size())
-        print(ids.size())
+        # print(context_idxs.size())
+        # print(question_char_idxs.size())
+        # print(counts.size())
+        # print(ids.size())
         
         if i >= 3:
             break

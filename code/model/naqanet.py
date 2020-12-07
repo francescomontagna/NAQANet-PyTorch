@@ -87,10 +87,10 @@ class NAQANet(QANet):
         if len(self.answering_abilities) > 1:
             self.answer_ability_predictor = nn.Sequential(
                 nn.Linear(2*hidden_size, hidden_size),
-                nn.ReLU(), 
+                # nn.ReLU(), 
                 nn.Dropout(p = self.p_dropout),
                 nn.Linear(hidden_size, len(self.answering_abilities)),
-                nn.ReLU(), 
+                # nn.ReLU(), 
                 nn.Dropout(p = self.p_dropout)
             ) # then, apply a softmax
         
@@ -101,25 +101,25 @@ class NAQANet(QANet):
             )
             self.passage_span_start_predictor = nn.Sequential(
                 nn.Linear(hidden_size * 2, hidden_size),
-                nn.ReLU(), 
+                # nn.ReLU(), 
                 nn.Linear(hidden_size, 1),
-                nn.ReLU()
+                # nn.ReLU()
             )
             self.passage_span_end_predictor = nn.Sequential(
                 nn.Linear(hidden_size * 2, hidden_size),
-                nn.ReLU(), 
+                # nn.ReLU(), 
                 nn.Linear(hidden_size, 1),
-                nn.ReLU()
+                # nn.ReLU() 
             ) # then, apply a softmax
 
         if 'counting' in self.answering_abilities:
             self.counting_index = self.answering_abilities.index("counting")
             self.count_number_predictor = nn.Sequential(
                 nn.Linear(hidden_size, hidden_size),
-                nn.ReLU(), 
+                # nn.ReLU(), 
                 nn.Dropout(p = self.p_dropout),
                 nn.Linear(hidden_size, self.max_count),
-                nn.ReLU()
+                # nn.ReLU()
             ) # then, apply a softmax
         
         if 'addition_subtraction' in self.answering_abilities:
@@ -128,9 +128,9 @@ class NAQANet(QANet):
             )
             self.number_sign_predictor = nn.Sequential(
                 nn.Linear(hidden_size*3, hidden_size),
-                nn.ReLU(),
+                # nn.ReLU(),
                 nn.Linear(hidden_size, 3),
-                nn.ReLU()
+                # nn.ReLU()
             )
 
     def forward(self, cw_idxs, cc_idxs, qw_idxs, qc_idxs, ids,
@@ -344,6 +344,7 @@ class NAQANet(QANet):
                     log_marginal_likelihood_for_passage_span = util.logsumexp(
                         log_likelihood_for_passage_spans
                     )
+
                     log_marginal_likelihood_list.append(log_marginal_likelihood_for_passage_span)
                 
                 elif answering_ability == "counting":
@@ -421,10 +422,10 @@ if __name__ == "__main__":
     eval_debug = False
     train_debug = False
     debug_real_data = True # debug using train_dataloader
+    torch.manual_seed(224)
+    np.random.seed(224)
 
     if eval_debug or train_debug:
-        torch.manual_seed(22)
-        np.random.seed(2)
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         wemb_vocab_size = 5000
         number_emb_idxs = np.random.default_rng().choice(np.arange(1, wemb_vocab_size), size = int(wemb_vocab_size/4), replace = False)
@@ -432,7 +433,7 @@ if __name__ == "__main__":
         cemb_vocab_size = 94
         cemb_dim = 64
         d_model = 128
-        batch_size = 4
+        batch_size = 16
         q_max_len = 6
         c_max_len = 100
         spans_limit = 6
@@ -604,13 +605,14 @@ if __name__ == "__main__":
         args = get_train_args()
 
         # define model
-        device = 'cpu'
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        print(device)
         word_vectors = util.torch_from_json(args.word_emb_file)
         char_vectors = util.torch_from_json(args.char_emb_file)
         model = NAQANet(device, word_vectors, char_vectors,
             c_max_len = args.context_limit,
             q_max_len = args.question_limit,
-            answering_abilities = ['counting'],
+            answering_abilities = ['passage_span_extraction', 'counting'],
             max_count = args.max_count) # doesn't large max_count lead to meaningless probability?
         model = model.to(device)
         model.train()
@@ -629,31 +631,27 @@ if __name__ == "__main__":
         train_dataset = DROP(args.train_record_file)
         train_loader = data.DataLoader(train_dataset,
                                    batch_size=args.batch_size,
-                                   shuffle=True,
+                                   shuffle=False, # True
                                    num_workers=args.num_workers,
                                    collate_fn=collate_fn)
 
-        for _ in range(3):   
-            context_wids, context_cids, \
-                question_wids, question_cids, \
-                number_indices, start_indices, end_indices, \
-                counts, ids = next(iter(train_loader))
-
-        print("Example sizes")
-        print(f"context_wids: {context_wids.size()}")
-        print(f"context_cids: {context_cids.size()}")
-        print(f"question_wids: {question_wids.size()}")
-        print(f"question_cids: {question_cids.size()}")
-        print(f"number_indices: {number_indices.size()}")
-        print(f"start_indices: {start_indices.size()}")
-        print(f"end_indices: {end_indices.size()}")
-        print(f"counts: {counts.size()}")
-        print(f"ids: {ids.size()}")
+        epoch = 1
 
         # Train
         with torch.enable_grad():
             # tqdm(total=len(train_loader.dataset)) as progress_bar:
-            for epoch in range(70):
+            for context_wids, context_cids, \
+                    question_wids, question_cids, \
+                    number_indices, start_indices, end_indices, \
+                    counts, ids in train_loader:
+
+                if start_indices.size(1) == 0:
+                    print(f"Indice fallato {epoch-1}")
+                    print(f"ID {ids}")
+                    print(start_indices.size())
+                    print(end_indices)
+                    print()
+
                 # Setup for forward
                 context_wids = context_wids.to(device)
                 context_cids = context_cids.to(device)
@@ -673,7 +671,7 @@ if __name__ == "__main__":
 
                 loss = output_dict["loss"]
                 loss_val = loss.item()
-                print(f"Loss val: {loss_val}")
+                print(f"Loss val {epoch-1}: {loss_val}")
 
                 # Backward
                 loss.backward()
@@ -681,3 +679,5 @@ if __name__ == "__main__":
                 optimizer.step()
                 scheduler.step()
                 ema(model, epoch)
+
+                epoch += 1

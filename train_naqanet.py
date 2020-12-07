@@ -100,7 +100,7 @@ def main(args):
     train_dataset = DROP(args.train_record_file)
     train_loader = data.DataLoader(train_dataset,
                                    batch_size=args.batch_size,
-                                   shuffle=True,
+                                   shuffle=False, # True
                                    num_workers=args.num_workers,
                                    collate_fn=collate_fn)
     dev_dataset = DROP(args.dev_record_file)

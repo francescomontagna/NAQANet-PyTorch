@@ -41,38 +41,6 @@ def get_setup_drop_args():
     parser.add_argument('--answer_file',
                         type=str,
                         default=os.path.join(data_path, 'answer.json'))
-    parser.add_argument('--para_limit',
-                        type=int,
-                        default=1926,
-                        help='Max number of words in a paragraph')
-    parser.add_argument('--ques_limit',
-                        type=int,
-                        default=70,
-                        help='Max number of words to keep from a question')
-    parser.add_argument('--num_idx_limit',
-                        type=int,
-                        default=90,
-                        help='Max of \'number indices\' in a context')
-    parser.add_argument('--spans_limit',
-                        type=int,
-                        default=44,
-                        help='Max answer spans in a context')
-    parser.add_argument('--counts_limit',
-                        type=int,
-                        default=1,
-                        help='Max number of numerical answers in a context')
-    parser.add_argument('--as_expr_limit',
-                        type=int,
-                        default=403,
-                        help='Max number of addition/subtraction signs for an answer')
-    parser.add_argument('--test_para_limit',
-                        type=int,
-                        default=1000,
-                        help='Max number of words in a paragraph at test time')
-    parser.add_argument('--test_ques_limit',
-                        type=int,
-                        default=100,
-                        help='Max number of words in a question at test time')
     parser.add_argument('--char_dim',
                         type=int,
                         default=64,
@@ -150,14 +118,6 @@ def get_train_args():
 
     # model
     parser.add_argument(
-        '--context_limit',
-        default=1926, type=int,
-        help='maximum context token number')
-    parser.add_argument(
-        '--question_limit',
-        default=70, type=int,
-        help='maximum question token number')
-    parser.add_argument(
         '--answer_limit',
         default=30, type=int,
         help='maximum answer token number')
@@ -169,10 +129,6 @@ def get_train_args():
         '--num_head',
         default=8, type=int,
         help='attention num head')
-    parser.add_argument(
-        '--max_count',
-        default=100000, type=int,
-        help='maximum counting ability of the network')
 
     # cuda
     parser.add_argument(
@@ -281,6 +237,40 @@ def add_common_args(parser):
     parser.add_argument('--dev_eval_file',
                         type=str,
                         default=os.path.join(data_path, 'dev_eval.json'))
+    parser.add_argument('--context_limit',
+                        default=1926, type=int,
+                        help='maximum context token number')
+    parser.add_argument('--question_limit',
+                        default=70, type=int,
+                        help='maximum question token number')
+    parser.add_argument('--num_idx_limit',
+                        type=int,
+                        default=90,
+                        help='Max of \'number indices\' in a context')
+    parser.add_argument('--spans_limit',
+                        type=int,
+                        default=44,
+                        help='Max answer spans in a context')
+    parser.add_argument('--counts_limit',
+                        type=int,
+                        default=1,
+                        help='Max number of numerical answers in a context')
+    parser.add_argument('--as_expr_limit',
+                        type=int,
+                        default=403,
+                        help='Max number of addition/subtraction signs for an answer')
+    parser.add_argument('--test_para_limit',
+                        type=int,
+                        default=1000,
+                        help='Max number of words in a paragraph at test time')
+    parser.add_argument('--test_ques_limit',
+                        type=int,
+                        default=100,
+                        help='Max number of words in a question at test time')
+    parser.add_argument('--max_count',
+                        default=100000, type=int,
+                        help='maximum counting ability of the network')
+
 
 
 def add_train_test_args(parser):
