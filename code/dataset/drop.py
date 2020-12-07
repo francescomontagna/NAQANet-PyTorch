@@ -33,7 +33,7 @@ class DROP(data.Dataset):
         self.context_char_idxs = torch.from_numpy(dataset['context_char_idxs']).long()
         self.question_idxs = torch.from_numpy(dataset['ques_idxs']).long()
         self.question_char_idxs = torch.from_numpy(dataset['ques_char_idxs']).long()
-        self.number_idxs = torch.from_numpy(dataset['number_idxs']).long()
+        # self.number_idxs = torch.from_numpy(dataset['number_idxs']).long()
         self.start_idxs = torch.from_numpy(dataset['start_idxs']).long()
         self.end_idxs = torch.from_numpy(dataset['end_idxs']).long()
         self.counts = torch.from_numpy(dataset['counts']).long()
@@ -45,7 +45,7 @@ class DROP(data.Dataset):
                    self.context_char_idxs[idx],
                    self.question_idxs[idx],
                    self.question_char_idxs[idx],
-                   self.number_idxs[idx], 
+                #    self.number_idxs[idx], 
                    self.start_idxs[idx],
                    self.end_idxs[idx],
                    self.counts[idx],
@@ -106,9 +106,8 @@ def collate_fn(examples):
     # Group by tensor type
     context_idxs, context_char_idxs, \
         question_idxs, question_char_idxs, \
-        number_indices, start_indices, \
-        end_indices, counts, \
-        ids = zip(*examples)
+        start_indices, end_indices, \
+        counts, ids = zip(*examples)
 
     # Merge into batch tensors
     context_idxs = merge_1d(context_idxs)
@@ -116,7 +115,7 @@ def collate_fn(examples):
     question_idxs = merge_1d(question_idxs)
     question_char_idxs = merge_2d(question_char_idxs)
 
-    number_indices = merge_1d(number_indices, pad_value = -1)
+    # number_indices = merge_1d(number_indices, pad_value = -1)
     start_indices = merge_1d(start_indices, pad_value = -1)
     end_indices = merge_1d(end_indices, pad_value = -1)
     counts = merge_0d(counts) # TODO check
@@ -126,7 +125,7 @@ def collate_fn(examples):
 
     return (context_idxs, context_char_idxs,
             question_idxs, question_char_idxs,
-            number_indices, start_indices, end_indices,
+            start_indices, end_indices,
             counts, ids
             )
 
@@ -137,7 +136,7 @@ if __name__ == "__main__":
     train_dataset = DROP(args.train_record_file)
     train_loader = data.DataLoader(train_dataset,
                                    batch_size=args.batch_size,
-                                   shuffle=False, # True
+                                   shuffle=True,
                                    num_workers=args.num_workers,
                                    collate_fn=collate_fn)
     dev_dataset = DROP(args.dev_record_file)
@@ -151,7 +150,7 @@ if __name__ == "__main__":
     for i, example in enumerate(train_loader):
         context_idxs, context_char_idxs, \
         question_idxs, question_char_idxs, \
-        number_indices, start_indices, end_indices, \
+        start_indices, end_indices, \
         counts, ids = example
 
         print(start_indices.size())

@@ -100,7 +100,7 @@ def main(args):
     train_dataset = DROP(args.train_record_file)
     train_loader = data.DataLoader(train_dataset,
                                    batch_size=args.batch_size,
-                                   shuffle=False, # True
+                                   shuffle=True,
                                    num_workers=args.num_workers,
                                    collate_fn=collate_fn)
     dev_dataset = DROP(args.dev_record_file)
@@ -121,7 +121,7 @@ def main(args):
                 tqdm(total=len(train_loader.dataset)) as progress_bar:
             for cw_idxs, cc_idxs, \
                     qw_idxs, qc_idxs, \
-                    number_idxs, start_idxs, end_idxs, \
+                    start_idxs, end_idxs, \
                     counts, ids  in train_loader:
 
                 # Setup for forward
@@ -129,7 +129,6 @@ def main(args):
                 cc_idxs = cc_idxs.to(device)
                 qw_idxs = qw_idxs.to(device)
                 qc_idxs = qc_idxs.to(device)
-                number_idxs = number_idxs.to(device) # TODO remove
                 start_idxs = start_idxs.to(device)
                 end_idxs = end_idxs.to(device)
                 counts = counts.to(device)
@@ -140,7 +139,7 @@ def main(args):
                 # Forward
                 output_dict = model(cw_idxs, cc_idxs,
                        qw_idxs, qc_idxs, ids,
-                       number_idxs, start_idxs, end_idxs, counts)
+                       start_idxs, end_idxs, counts)
 
                 loss = output_dict["loss"]
                 loss_val = loss.item()
@@ -178,17 +177,6 @@ def main(args):
                     results_str = ', '.join(f'{k}: {v:05.2f}' for k, v in results.items())
                     log.info(f'Dev {results_str}')
 
-                    # Log to TensorBoard
-                    log.info('Visualizing in TensorBoard...')
-                    for k, v in results.items():
-                        tbx.add_scalar(f'dev/{k}', v, step)
-                    util.visualize(tbx,
-                                   pred_dict=pred_dict,
-                                   eval_path=args.dev_eval_file,
-                                   step=step,
-                                   split='dev',
-                                   num_visuals=args.num_visuals)
-
 
 def evaluate(model, data_loader, device, eval_file):
     nll_meter = util.AverageMeter() # ?
@@ -202,7 +190,7 @@ def evaluate(model, data_loader, device, eval_file):
         model.eval_data = gold_dict # pass eval_data as model state
         for cw_idxs, cc_idxs, \
                 qw_idxs, qc_idxs, \
-                number_idxs, start_idxs, end_idxs, \
+                start_idxs, end_idxs, \
                 counts, ids   in data_loader:
 
             # Setup for forward
@@ -210,12 +198,16 @@ def evaluate(model, data_loader, device, eval_file):
             cc_idxs = cc_idxs.to(device)
             qw_idxs = qw_idxs.to(device)
             qc_idxs = qc_idxs.to(device)
+            start_idxs = start_idxs.to(device)
+            end_idxs = end_idxs.to(device)
+            counts = counts.to(device)
+            ids = ids.to(device)
             batch_size = cw_idxs.size(0)
 
             # Forward
-            model(cw_idxs, cc_idxs,
+            output_dict = model(cw_idxs, cc_idxs,
                        qw_idxs, qc_idxs, ids,
-                       number_idxs, start_idxs, end_idxs, counts)
+                       start_idxs, end_idxs, counts)
             loss = output_dict['loss']
             nll_meter.update(loss.item(), batch_size)
 

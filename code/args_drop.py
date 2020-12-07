@@ -158,7 +158,7 @@ def get_train_args():
         help = 'dropout probability between layers')
     parser.add_argument('--eval_steps',
         type=int,
-        default=77409,
+        default=69915,
         help='Number of steps between successive evaluations.')
     
     # metrics & checkpoints

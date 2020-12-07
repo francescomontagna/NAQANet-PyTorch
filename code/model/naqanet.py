@@ -134,10 +134,10 @@ class NAQANet(QANet):
             )
 
     def forward(self, cw_idxs, cc_idxs, qw_idxs, qc_idxs, ids,
-                number_indices = None,
                 answer_start_as_passage_spans: torch.LongTensor = None,
                 answer_end_as_passage_spans: torch.LongTensor = None,
-                answer_as_counts: torch.LongTensor = None):
+                answer_as_counts: torch.LongTensor = None,
+                number_indices = None):
 
         batch_size = cw_idxs.size(0)
 
@@ -389,7 +389,7 @@ class NAQANet(QANet):
                         predicted_ability_str = self.answering_abilities[
                             best_answer_ability[i].detach().cpu().numpy()
                         ]
-                        print(f"Predicted ability: {predicted_ability_str}")
+                        # print(f"Predicted ability: {predicted_ability_str}")
                 else:
                     predicted_ability_str = self.answering_abilities[0]
 
@@ -433,7 +433,7 @@ if __name__ == "__main__":
         cemb_vocab_size = 94
         cemb_dim = 64
         d_model = 128
-        batch_size = 16
+        batch_size = 32
         q_max_len = 6
         c_max_len = 100
         spans_limit = 6
@@ -454,7 +454,6 @@ if __name__ == "__main__":
         context_cids = torch.zeros(batch_size, c_max_len, char_dim).long()
 
         num_idxs_length = torch.LongTensor(batch_size).random_(0, num_limit)
-        number_indices = torch.zeros(batch_size, num_limit).long() -1
 
         spans_length = torch.LongTensor(batch_size).random_(0, spans_limit)
         start_indices = torch.zeros(batch_size, spans_limit).long() -1
@@ -468,7 +467,6 @@ if __name__ == "__main__":
         print(f"context_cids: {context_cids.size()}")
         print(f"question_wids: {question_wids.size()}")
         print(f"question_cids: {question_cids.size()}")
-        print(f"number_indices: {number_indices.size()}")
         print(f"start_indices: {start_indices.size()}")
         print(f"end_indices: {end_indices.size()}")
         print(f"counts: {counts.size()}")
@@ -487,10 +485,6 @@ if __name__ == "__main__":
             context_cids[i, 0:context_lengths[i], :] = \
                 torch.LongTensor(1, context_lengths[i], char_dim).random_(
                     1, cemb_vocab_size)
-
-            number_indices[i, 0:num_idxs_length[i]] = \
-                torch.LongTensor(1, num_idxs_length[i]).random_(
-                    0, c_max_len)
             start_indices[i, 0:spans_length[i]] = \
                 torch.LongTensor(1, spans_length[i]).random_(
                     0, c_max_len)
@@ -521,7 +515,7 @@ if __name__ == "__main__":
         # train
         output_dict = model(context_wids, context_cids,
                        question_wids, question_cids, ids,
-                       number_indices, start_indices, end_indices, counts)
+                       start_indices, end_indices, counts)
 
         loss = output_dict["loss"]
         print(f"Training Loss: {loss.item()}")
@@ -531,7 +525,7 @@ if __name__ == "__main__":
         model.eval_data = EVAL_EXAMPLE
         output_dict = model(context_wids, context_cids,
                        question_wids, question_cids, ids,
-                       number_indices, start_indices, end_indices, counts)
+                       start_indices, end_indices, counts)
 
         loss = output_dict["loss"]
         
@@ -577,7 +571,6 @@ if __name__ == "__main__":
                 context_cids = context_cids.to(device)
                 question_wids = question_wids.to(device)
                 question_cids = question_cids.to(device)
-                number_indices = number_indices.to(device) # TODO remove
                 start_indices = start_indices.to(device)
                 end_indices = end_indices.to(device)
                 counts = counts.to(device)
@@ -587,7 +580,7 @@ if __name__ == "__main__":
                 # Forward
                 output_dict = model(context_wids, context_cids,
                     question_wids, question_cids, ids,
-                    number_indices, start_indices, end_indices, counts)
+                    start_indices, end_indices, counts)
 
                 loss = output_dict["loss"]
                 loss_val = loss.item()
@@ -599,6 +592,7 @@ if __name__ == "__main__":
                 optimizer.step()
                 scheduler.step()
                 ema(model, epoch)
+
 
     if debug_real_data:
 
@@ -631,7 +625,7 @@ if __name__ == "__main__":
         train_dataset = DROP(args.train_record_file)
         train_loader = data.DataLoader(train_dataset,
                                    batch_size=args.batch_size,
-                                   shuffle=False, # True
+                                   shuffle=True,
                                    num_workers=args.num_workers,
                                    collate_fn=collate_fn)
 
@@ -642,22 +636,14 @@ if __name__ == "__main__":
             # tqdm(total=len(train_loader.dataset)) as progress_bar:
             for context_wids, context_cids, \
                     question_wids, question_cids, \
-                    number_indices, start_indices, end_indices, \
+                    start_indices, end_indices, \
                     counts, ids in train_loader:
-
-                if start_indices.size(1) == 0:
-                    print(f"Indice fallato {epoch-1}")
-                    print(f"ID {ids}")
-                    print(start_indices.size())
-                    print(end_indices)
-                    print()
 
                 # Setup for forward
                 context_wids = context_wids.to(device)
                 context_cids = context_cids.to(device)
                 question_wids = question_wids.to(device)
                 question_cids = question_cids.to(device)
-                number_indices = number_indices.to(device) # TODO remove
                 start_indices = start_indices.to(device)
                 end_indices = end_indices.to(device)
                 counts = counts.to(device)
@@ -667,7 +653,7 @@ if __name__ == "__main__":
                 # Forward
                 output_dict = model(context_wids, context_cids,
                     question_wids, question_cids, ids,
-                    number_indices, start_indices, end_indices, counts)
+                    start_indices, end_indices, counts)
 
                 loss = output_dict["loss"]
                 loss_val = loss.item()

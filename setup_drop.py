@@ -312,13 +312,16 @@ def process_file(filename, data_type, word_counter, char_counter, debug = False)
                     numbers_for_count = list(range(max_count))
                     valid_counts = find_valid_counts(numbers_for_count, target_numbers) # valid indices
 
+                # Discard when no valid answeer is available
+                if valid_counts == [] and valid_passage_spans == []:
+                    continue
 
                 # -1 if no answer is provided
-                if tokenized_answer_texts == [] or valid_passage_spans == []:
+                if  valid_passage_spans == []:
                     valid_passage_spans.append((-1, -1))
                 if valid_signs_for_add_sub_expressions == []:
                     valid_signs_for_add_sub_expressions.append([-1])
-                if target_numbers == [] or valid_counts == []:
+                if valid_counts == []:
                     valid_counts.append(-1)
                 if number_indices == []:
                     number_indices.append(-1)
