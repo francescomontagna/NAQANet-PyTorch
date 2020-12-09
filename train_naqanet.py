@@ -40,7 +40,8 @@ def main(args):
     
     # set device
     if args.use_gpu and torch.cuda.is_available():
-        device = torch.device("cuda:{}".format(args.gpu_ids[0]))
+        # device = torch.device("cuda:{}".format(args.gpu_ids[0]))
+        device = 'cuda'
         args.batch_size *= max(1, len(args.gpu_ids))
         print(f"device is cuda: gpu_ids = {args.gpu_ids}")
     else:
@@ -114,8 +115,6 @@ def main(args):
     log.info('Training...')
     steps_till_eval = args.eval_steps
     epoch = step // len(train_dataset)
-    print(f"CUDA memory allocated: {torch.cuda.memory_allocated()*1e-9} GB")
-    print(f"CUDA MAX memory allocated: {torch.cuda.max_memory_allocated()*1e-9} GB")
     while epoch != args.epochs:
         epoch += 1
         log.info(f'Starting epoch {epoch}...')
@@ -150,7 +149,7 @@ def main(args):
                 loss.backward()
                 nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
                 optimizer.step()
-                scheduler.step(step // batch_size)
+                scheduler.step()
                 ema(model, step // batch_size)
 
                 # Log info
@@ -181,19 +180,19 @@ def main(args):
 
 
 def evaluate(model, data_loader, device, eval_file):
-    nll_meter = util.AverageMeter() # ?
+    nll_meter = util.AverageMeter() 
 
     model.eval()
-    pred_dict = {}
+    pred_dict = dict()
     with open(eval_file, 'r') as fh:
         gold_dict = json_load(fh)
     with torch.no_grad(), \
             tqdm(total=len(data_loader.dataset)) as progress_bar:
-        model.eval_data = gold_dict # pass eval_data as model state
+        model.module.set_eval_data(gold_dict) # pass eval_data as model state
         for cw_idxs, cc_idxs, \
                 qw_idxs, qc_idxs, \
                 start_idxs, end_idxs, \
-                counts, ids   in data_loader:
+                counts, ids  in data_loader:
 
             # Setup for forward
             cw_idxs = cw_idxs.to(device)
@@ -214,17 +213,16 @@ def evaluate(model, data_loader, device, eval_file):
             nll_meter.update(loss.item(), batch_size)
 
             # Get F1 and EM scores
-
             # Log info
             progress_bar.update(batch_size)
             progress_bar.set_postfix(NLL=nll_meter.avg)
+            pred_dict.update(output_dict["predictions"]) # Errato ogni volta penso sovrascriva
 
-            pred_dict.update(output_dict["predictions"])
-
-    model.eval_data = None
+    model.module.set_eval_data(None)
     model.train()
 
-    eval_dict = eval_dicts(gold_dict, pred_dict,)
+
+    eval_dict = eval_dicts(gold_dict, pred_dict)
     results_list = [('Loss', nll_meter.avg),
                     ('F1', eval_dict['F1']),
                     ('EM', eval_dict['EM'])]
@@ -236,3 +234,5 @@ def evaluate(model, data_loader, device, eval_file):
 
 if __name__ == '__main__':
     main(get_train_args())
+
+    

@@ -133,6 +133,9 @@ class NAQANet(QANet):
                 # nn.ReLU()
             )
 
+    def set_eval_data(self, gold_dict):
+        self.eval_data = gold_dict
+
     def forward(self, cw_idxs, cc_idxs, qw_idxs, qc_idxs, ids,
                 answer_start_as_passage_spans: torch.LongTensor = None,
                 answer_end_as_passage_spans: torch.LongTensor = None,
@@ -298,7 +301,7 @@ class NAQANet(QANet):
                     :, self.passage_span_extraction_index
                 ]
 
-        output_dict = {}
+        output_dict = dict()
 
         # If answer is given, compute the loss.
         if (
@@ -381,10 +384,10 @@ class NAQANet(QANet):
             output_dict["loss"] = -marginal_log_likelihood.mean()
 
         if self.eval_data:
+            output_dict["predictions"] = dict()
             for i in range(batch_size):
 
                 id = ids[i].item()
-
                 if len(self.answering_abilities) > 1:
                         predicted_ability_str = self.answering_abilities[
                             best_answer_ability[i].detach().cpu().numpy()
@@ -400,28 +403,20 @@ class NAQANet(QANet):
                                            id,
                                            start.item(),
                                            end.item())
-                    try:
-                        output_dict["predictions"][str(id)] = preds
-                    except KeyError:
-                        output_dict["predictions"] = dict()
-                        output_dict["predictions"][str(id)] = preds
-                    
+                    output_dict["predictions"][str(id)] = preds
 
                 elif predicted_ability_str == "counting":
                     predicted_count = str(best_count_number[i].detach().cpu().numpy())
-                    try:
-                        output_dict["predictions"][str(id)] = predicted_count
-                    except KeyError:
-                        output_dict["predictions"] = dict()
-                        output_dict["predictions"][str(id)] = predicted_count
+                    output_dict["predictions"][str(id)] = predicted_count
+
 
         return output_dict
         
 
 if __name__ == "__main__":
-    eval_debug = False
+    eval_debug = True
     train_debug = False
-    debug_real_data = True # debug using train_dataloader
+    debug_real_data = False # debug using train_dataloader
     torch.manual_seed(224)
     np.random.seed(224)
 

@@ -597,8 +597,6 @@ def pre_process(args, debug = False):
         # save generated files
         save(args.word_emb_file, word_emb_mat, message="word embedding")
         save(args.char_emb_file, char_emb_mat, message="char embedding")
-
-        # TODO decide eval dict form and define it in process_file
         save(args.train_eval_file, train_eval, message="train eval")
         save(args.dev_eval_file, dev_eval, message="dev eval")
         save(args.word2idx_file, word2idx_dict, message="word dictionary")
