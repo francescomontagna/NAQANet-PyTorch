@@ -25,7 +25,7 @@ parser.add_argument(
     help='word embeddings language')
 parser.add_argument(
     '--common_embeddings_filepath',
-    default='/mnt/data1/nlp/embeddings/fasttext/fasttext.common.vec', #TODO fare attenzione porco dio
+    default='/mnt/data1/nlp/embeddings/fasttext/fasttext.common.vec', 
     type=str, help='path of common embedding file')
 parser.add_argument(
     '--word_embeddings_filepath',
