@@ -142,6 +142,7 @@ def main(args):
                        start_idxs, end_idxs, counts)
 
                 loss = output_dict["loss"]
+                loss = torch.sum(loss, dim = 0) / loss.size(0)
                 loss_val = loss.item()
 
                 # Backward
