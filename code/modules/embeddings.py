@@ -34,7 +34,7 @@ class Embedding(nn.Module):
         ch_emb = self.conv2d(ch_emb)
         ch_emb = F.relu(ch_emb)
         ch_emb, _ = torch.max(ch_emb, dim=3) # max pooling
-        ch_emb = ch_emb.squeeze()
+        # ch_emb = ch_emb.squeeze()
 
         wd_emb = F.dropout(wd_emb, p=self.p_drop, training=self.training)
         wd_emb = wd_emb.transpose(1, 2)
@@ -43,4 +43,3 @@ class Embedding(nn.Module):
         emb = self.hwy(emb)   # (batch_size, hidden_size, seq_len)
 
         return emb.transpose(1,2)
-

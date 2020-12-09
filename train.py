@@ -105,9 +105,6 @@ def main(args):
     log.info('Training...')
     steps_till_eval = args.eval_steps
     epoch = step // len(train_dataset)
-    for i in args.gpu_ids:
-        print(f"CUDA memory allocated for gpu {i}: {torch.cuda.memory_allocated(i)*1e-9} GB")
-        print(f"CUDA MAX memory allocated for gpu {i}: {torch.cuda.max_memory_allocated(i)*1e-9} GB")
     while epoch != args.epochs:
         epoch += 1
         log.info(f'Starting epoch {epoch}...')
