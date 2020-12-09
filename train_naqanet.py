@@ -40,8 +40,7 @@ def main(args):
     
     # set device
     if args.use_gpu and torch.cuda.is_available():
-        # device = torch.device("cuda:{}".format(args.gpu_ids[0]))
-        device = 'cuda'
+        device = torch.device("cuda:{}".format(args.gpu_ids[0]))
         args.batch_size *= max(1, len(args.gpu_ids))
         print(f"device is cuda: gpu_ids = {args.gpu_ids}")
     else:

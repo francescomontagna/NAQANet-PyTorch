@@ -87,10 +87,10 @@ class NAQANet(QANet):
         if len(self.answering_abilities) > 1:
             self.answer_ability_predictor = nn.Sequential(
                 nn.Linear(2*hidden_size, hidden_size),
-                nn.ReLU(), 
+                # nn.ReLU(), 
                 nn.Dropout(p = self.p_dropout),
                 nn.Linear(hidden_size, len(self.answering_abilities)),
-                nn.ReLU(), 
+                # nn.ReLU(), 
                 nn.Dropout(p = self.p_dropout)
             ) # then, apply a softmax
         
@@ -101,25 +101,25 @@ class NAQANet(QANet):
             )
             self.passage_span_start_predictor = nn.Sequential(
                 nn.Linear(hidden_size * 2, hidden_size),
-                nn.ReLU(), 
+                # nn.ReLU(), 
                 nn.Linear(hidden_size, 1),
-                nn.ReLU()
+                # nn.ReLU()
             )
             self.passage_span_end_predictor = nn.Sequential(
                 nn.Linear(hidden_size * 2, hidden_size),
-                nn.ReLU(), 
+                # nn.ReLU(), 
                 nn.Linear(hidden_size, 1),
-                nn.ReLU() 
+                # nn.ReLU() 
             ) # then, apply a softmax
 
         if 'counting' in self.answering_abilities:
             self.counting_index = self.answering_abilities.index("counting")
             self.count_number_predictor = nn.Sequential(
                 nn.Linear(hidden_size, hidden_size),
-                nn.ReLU(), 
+                # nn.ReLU(), 
                 nn.Dropout(p = self.p_dropout),
                 nn.Linear(hidden_size, self.max_count),
-                nn.ReLU()
+                # nn.ReLU()
             ) # then, apply a softmax
         
         if 'addition_subtraction' in self.answering_abilities:
@@ -128,9 +128,9 @@ class NAQANet(QANet):
             )
             self.number_sign_predictor = nn.Sequential(
                 nn.Linear(hidden_size*3, hidden_size),
-                nn.ReLU(),
+                # nn.ReLU(),
                 nn.Linear(hidden_size, 3),
-                nn.ReLU()
+                # nn.ReLU()
             )
 
     def set_eval_data(self, gold_dict):
