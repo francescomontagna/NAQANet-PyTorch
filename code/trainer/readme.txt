@@ -1,1 +1,0 @@
-Old trainer code. Please ignore the content of this folder

@@ -111,10 +111,7 @@ def get_train_args():
         '--grad_clip',
         default=5.0, type=float,
         help='global Norm gradient clipping rate')
-    parser.add_argument(
-        '--use_ema',
-        default=False, action='store_true',
-        help='whether use exponential moving average')
+
 
     # model
     parser.add_argument(

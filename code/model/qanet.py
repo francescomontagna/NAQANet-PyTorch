@@ -10,7 +10,7 @@ from code.modules.cq_attention import CQAttention
 from code.modules.embeddings import Embedding
 from code.modules.utils import set_mask
 from code.util import torch_from_json
-from code.args import get_train_args
+from code.args_drop import get_train_args
 
 
 class QANet(nn.Module):
@@ -24,7 +24,7 @@ class QANet(nn.Module):
                  c_max_len: int = 800,
                  q_max_len: int = 100,
                  p_dropout: float = 0.1,
-                 num_heads : int = 8): # need info for padding?
+                 num_heads : int = 8): 
         """
         :param hidden_size: hidden size of representation vectors
         :param q_max_len: max number of words in a question sentence
@@ -52,7 +52,7 @@ class QANet(nn.Module):
 
         self.modeling_resizing_layer = nn.Linear(4 * hidden_size, hidden_size)
 
-        # Should be 7 but I have memory issues
+        # Should be 7 but it causes out of memory error
         self.modeling_encoder_blocks = nn.ModuleList([EncoderBlock(device, hidden_size, len_sentence=c_max_len, p_dropout=0.1) \
                                              for _ in range(6)])
 
@@ -72,7 +72,7 @@ class QANet(nn.Module):
         self.q_mask_c2q = ~self.q_mask_enc
 
         cb, qb = self.context_encoder(cb, self.c_mask_enc), self.question_encoder(qb, self.q_mask_enc)
-        self.qb = qb # careful to copy
+        self.qb = qb 
 
         X = self.cq_attention(cb, qb, self.c_mask_c2q, self.q_mask_c2q)
         self.passage_aware_rep = self.modeling_resizing_layer(X)
@@ -96,10 +96,9 @@ class QANet(nn.Module):
 
 
 if __name__ == "__main__":
-    test = True
+    debug = True
     
-
-    if test:
+    if debug:
         torch.manual_seed(22)
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         wemb_vocab_size = 5000

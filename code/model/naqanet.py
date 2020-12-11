@@ -48,13 +48,17 @@ class NAQANet(QANet):
                  q_max_len: int = 100,
                  p_dropout: float = 0.1,
                  num_heads : int = 8, 
-                 answering_abilities = ['passage_span_extraction', 'counting', 'addition_subtraction'],
+                 answering_abilities = ['passage_span_extraction', 'counting'],
                  max_count = 10): # max number the network can count
+
         """
         :param hidden_size: hidden size of representation vectors
         :param q_max_len: max number of words in a question sentence
         :param c_max_len: max number of words in a context sentence
         :param p_dropout: dropout probability
+        :param num_heads: number of attention heads
+        :param answering_abilities: type of answering abilities trained
+        :param max_count: max number the network can count up to
         """
         super().__init__(
             device, 
@@ -81,16 +85,14 @@ class NAQANet(QANet):
 
         # TODO fix
         self.modeling_encoder_blocks = nn.ModuleList([EncoderBlock(device, hidden_size, len_sentence=c_max_len, p_dropout=0.1) \
-                                             for _ in range(2)])
+                                             for _ in range(1)])
 
         # answer type predictor
         if len(self.answering_abilities) > 1:
             self.answer_ability_predictor = nn.Sequential(
                 nn.Linear(2*hidden_size, hidden_size),
-                # nn.ReLU(), 
                 nn.Dropout(p = self.p_dropout),
                 nn.Linear(hidden_size, len(self.answering_abilities)),
-                # nn.ReLU(), 
                 nn.Dropout(p = self.p_dropout)
             ) # then, apply a softmax
         
@@ -101,25 +103,19 @@ class NAQANet(QANet):
             )
             self.passage_span_start_predictor = nn.Sequential(
                 nn.Linear(hidden_size * 2, hidden_size),
-                # nn.ReLU(), 
                 nn.Linear(hidden_size, 1),
-                # nn.ReLU()
             )
             self.passage_span_end_predictor = nn.Sequential(
                 nn.Linear(hidden_size * 2, hidden_size),
-                # nn.ReLU(), 
                 nn.Linear(hidden_size, 1),
-                # nn.ReLU() 
             ) # then, apply a softmax
 
         if 'counting' in self.answering_abilities:
             self.counting_index = self.answering_abilities.index("counting")
             self.count_number_predictor = nn.Sequential(
-                nn.Linear(hidden_size, hidden_size),
-                # nn.ReLU(), 
+                nn.Linear(hidden_size, hidden_size), 
                 nn.Dropout(p = self.p_dropout),
                 nn.Linear(hidden_size, self.max_count),
-                # nn.ReLU()
             ) # then, apply a softmax
         
         if 'addition_subtraction' in self.answering_abilities:
@@ -128,9 +124,7 @@ class NAQANet(QANet):
             )
             self.number_sign_predictor = nn.Sequential(
                 nn.Linear(hidden_size*3, hidden_size),
-                # nn.ReLU(),
                 nn.Linear(hidden_size, 3),
-                # nn.ReLU()
             )
 
     def set_eval_data(self, gold_dict):
@@ -176,7 +170,7 @@ class NAQANet(QANet):
             if len(self.answering_abilities) > 1:
                 best_count_log_prob += answer_ability_log_probs[:, self.counting_index]
 
-        # Sto buttando il mio tempo
+        # TODO: test
         if "addition_subtraction" in self.answering_abilities:
             # M3
             modeled_passage = self.modeled_passage_list[-1]
