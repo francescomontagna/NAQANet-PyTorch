@@ -7,13 +7,13 @@ The logic for *addition-subtraction* is implemented but not tested.
 *question_span_extraction* has not been implemented.  
 
 ## Embeddings
-We use pretrained GloVE word embeddings, while character embedding are trained with the model.
+We use GloVE word embeddings, while character embeddings are trained with the model.
 
 ## Dataset  
 The model is trained on [DROP](https://arxiv.org/pdf/1903.00161.pdf) dataset.  
 
 ## Usage  
-To train the model on cuda device, run  
+To train and evaluate the model on cuda device, run  
 `python3 train_naqanet.py --use_gpu -g <device_id>`
 
 Before training the model:  
@@ -33,4 +33,10 @@ On both metrics around 13 points are lost w.r.t. to the results on paper. This c
 * Reduced number of layers from 6 to 1 in the stack of encoders before the output layer
 * I might have missed something in the implementation  
   
-Batch size is reduced to 4 to avoid memory issues with the GPU. Paper reccomends this value equals 16. All other hyperparameters are kept as suggested in the original paper
+Batch size is reduced to 4 to avoid memory issues with the GPU. Paper reccomends this value equals 16. All other hyperparameters are kept as suggested in the original paper  
+
+## Aknowledgments
+The QANet part is mainly based on the following repositories:  
+* https://github.com/andy840314/QANet-pytorch-
+* https://github.com/BangLiu/QANet-PyTorch
+* https://github.com/heliumsea/QANet-pytorch
