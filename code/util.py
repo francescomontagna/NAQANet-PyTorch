@@ -1,6 +1,6 @@
 """Utility classes and methods.
-Author:
-    Chris Chute (chute@stanford.edu)
+
+Code adapted from https://github.com/chrischute/squad/blob/master/util.py
 """
 import logging
 import os

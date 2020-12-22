@@ -1,6 +1,6 @@
-"""Command-line arguments for setup.py, train.py, test.py.
+"""Command-line arguments for setup_drop.py, train_naqanet.py.
 Author:
-    Chris Chute (chute@stanford.edu)
+    Francesco Montagna
 """
 
 import argparse
@@ -11,24 +11,24 @@ data_path = os.path.join(cwd, "data", "drop")
 
 
 def get_setup_drop_args():
-    """Get arguments needed in setup.py."""
+    """Get arguments needed in setup_drop.py."""
     print(f"CWD: {cwd}")
-    parser = argparse.ArgumentParser('Download and pre-process SQuAD')
+    parser = argparse.ArgumentParser('Pre-process DROP')
 
     add_common_args(parser)
 
     parser.add_argument('--train_file',
                         type=str,
-                        default=os.path.join(data_path , 'drop_dataset_train.json'))
+                        default=os.path.join(data_path, 'drop_dataset_train.json'))
     parser.add_argument('--dev_file',
                         type=str,
-                        default=os.path.join(data_path , 'drop_dataset_dev.json'))
+                        default=os.path.join(data_path, 'drop_dataset_dev.json'))
     parser.add_argument('--glove_url',
                         type=str,
                         default='http://nlp.stanford.edu/data/glove.840B.300d.zip')
     parser.add_argument('--glove_path',
                         type=str,
-                        default=os.path.join(cwd + '/data/glove.840B.300d/glove.840B.300d.txt'))
+                        default=os.path.join(cwd , 'data/glove.840B.300d/glove.840B.300d.txt'))
     parser.add_argument('--dev_meta_file',
                         type=str,
                         default=os.path.join(data_path, 'dev_meta.json'))
@@ -72,11 +72,10 @@ def get_setup_drop_args():
 
 
 def get_train_args():
-    """Get arguments needed in train.py."""
-    parser = argparse.ArgumentParser('Train a model on SQuAD')
+    """Get arguments needed in train_naqanet.py."""
+    parser = argparse.ArgumentParser('Train a model on DROP')
 
     add_common_args(parser)
-    add_train_test_args(parser)
 
     # optimizer & scheduler & weight & exponential moving average
     parser.add_argument(
@@ -112,8 +111,7 @@ def get_train_args():
         default=5.0, type=float,
         help='global Norm gradient clipping rate')
 
-
-    # model
+    # Model
     parser.add_argument(
         '--answer_limit',
         default=30, type=int,
@@ -135,12 +133,11 @@ def get_train_args():
     parser.add_argument(
         '-g',
         '--gpu_ids',
-        type = int,
+        type=int,
         action='append',
-        help = 'gpu ids')
+        help='gpu ids')
 
-
-    # train & evaluate
+    # Train & evaluate
     parser.add_argument(
         '-b', '--batch_size',
         default=16, type=int,
@@ -151,14 +148,14 @@ def get_train_args():
         help='number of total epochs (default: 30)')
     parser.add_argument(
         '--p_dropout',
-        default = 0.1, type = float,
-        help = 'dropout probability between layers')
+        default=0.1, type=float,
+        help='dropout probability between layers')
     parser.add_argument('--eval_steps',
-        type=int,
-        default=69915,
-        help='Number of steps between successive evaluations.')
-    
-    # metrics & checkpoints
+                        type=int,
+                        default=69915,
+                        help='Number of steps between successive evaluations.')
+
+    # Metrics & checkpoints
     parser.add_argument('--metric_name',
                         type=str,
                         default='F1',
@@ -169,11 +166,37 @@ def get_train_args():
                         default=5,
                         help='Maximum number of checkpoints to keep on disk.')
 
-    # seed
+    # Seed
     parser.add_argument('--seed',
                         type=int,
                         default=224,
                         help='Random seed for reproducibility.')
+
+    # Other
+    parser.add_argument('--max_ans_len',
+                        type=int,
+                        default=30,
+                        help='Maximum length of a predicted answer.')
+    parser.add_argument('--num_workers',
+                        type=int,
+                        default=4,
+                        help='Number of sub-processes to use per data loader.')
+    parser.add_argument('--save_dir',
+                        type=str,
+                        default='./save/',
+                        help='Base directory for saving information.')
+    parser.add_argument('--use_squad_v2',
+                        type=lambda s: s.lower().startswith('t'),
+                        default=True,
+                        help='Whether to use SQuAD 2.0 (unanswerable) questions.')
+    parser.add_argument('--num_visuals',
+                        type=int,
+                        default=10,
+                        help='Number of examples to visualize in TensorBoard.')
+    parser.add_argument('--load_path',
+                        type=str,
+                        default=None,
+                        help='Path to load as a model checkpoint.')
 
     args = parser.parse_args()
 
@@ -189,39 +212,14 @@ def get_train_args():
     return args
 
 
-# def get_test_args():
-#     """Get arguments needed in test.py."""
-#     parser = argparse.ArgumentParser('Test a trained model on SQuAD')
-
-#     add_common_args(parser)
-#     add_train_test_args(parser)
-
-#     parser.add_argument('--split',
-#                         type=str,
-#                         default='dev',
-#                         choices=('train', 'dev', 'test'),
-#                         help='Split to use for testing.')
-#     parser.add_argument('--sub_file',
-#                         type=str,
-#                         default='submission.csv',
-#                         help='Name for submission file.')
-
-#     # Require load_path for test.py
-#     args = parser.parse_args()
-#     if not args.load_path:
-#         raise argparse.ArgumentError('Missing required argument --load_path')
-
-#     return args
-
-
 def add_common_args(parser):
-    """Add arguments common to all 3 scripts: setup.py, train.py, test.py"""
+    """Add arguments common to all 2 scripts: setup_drop.py, train_naqanet.py"""
     parser.add_argument('--train_record_file',
                         type=str,
                         default=os.path.join(data_path, 'train.npz'))
     parser.add_argument('--dev_record_file',
                         type=str,
-                        default=os.path.join(data_path,'dev.npz'))
+                        default=os.path.join(data_path, 'dev.npz'))
     parser.add_argument('--word_emb_file',
                         type=str,
                         default=os.path.join(data_path, 'word_emb.json'))
@@ -267,36 +265,3 @@ def add_common_args(parser):
     parser.add_argument('--max_count',
                         default=100000, type=int,
                         help='maximum counting ability of the network')
-
-
-
-def add_train_test_args(parser):
-    """Add arguments common to train.py and test.py"""
-    parser.add_argument('--name',
-                        '-n',
-                        default = 'train', type=str,
-                        help='Name to identify training or test run.')
-    parser.add_argument('--max_ans_len',
-                        type=int,
-                        default=30,
-                        help='Maximum length of a predicted answer.')
-    parser.add_argument('--num_workers',
-                        type=int,
-                        default=4,
-                        help='Number of sub-processes to use per data loader.')
-    parser.add_argument('--save_dir',
-                        type=str,
-                        default='./save/',
-                        help='Base directory for saving information.')
-    parser.add_argument('--use_squad_v2',
-                        type=lambda s: s.lower().startswith('t'),
-                        default=True,
-                        help='Whether to use SQuAD 2.0 (unanswerable) questions.')
-    parser.add_argument('--num_visuals',
-                        type=int,
-                        default=10,
-                        help='Number of examples to visualize in TensorBoard.')
-    parser.add_argument('--load_path',
-                        type=str,
-                        default=None,
-                        help='Path to load as a model checkpoint.')

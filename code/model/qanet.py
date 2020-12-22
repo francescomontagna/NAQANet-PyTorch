@@ -1,16 +1,10 @@
 import torch
 import torch.nn as nn
 
-from copy import deepcopy
-
 from code.modules.encoder.encoder import EncoderBlock
-from code.modules.encoder.depthwise_conv import DepthwiseSeparableConv
 from code.modules.pointer import Pointer
 from code.modules.cq_attention import CQAttention
 from code.modules.embeddings import Embedding
-from code.modules.utils import set_mask
-from code.util import torch_from_json
-from code.args_drop import get_train_args
 
 
 class QANet(nn.Module):

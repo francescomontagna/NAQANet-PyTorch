@@ -1,12 +1,11 @@
 import torch
-from torch.nn.functional import softmax
 import os
 
 # Only for debugging
 def get_embeddings(batch: torch.tensor, emb_size):
     """
-
     :param batch: torch.tensor of size (N, L) with indices of context/sentence of interest
+    :param emb_size: size of the embeddings
     :return: torch.tensor of size (N, L, E)
     """
     emb_size = emb_size

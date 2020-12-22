@@ -1,7 +1,0 @@
-text,labels
-climate discuss stats,1
-climate incident sunday southeast,1
-develop incident stats discuss,1
-develop new_word,1
-
-#TODO modify coherently

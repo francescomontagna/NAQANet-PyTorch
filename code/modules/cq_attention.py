@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import math
 from code.modules.utils import mask_logits
 
-# Implementa anche il quarto layer! Vedi infatti cosa ritorna :-)
+
 class CQAttention(nn.Module):
     def __init__(self, d_model, p_dropout):
         super().__init__()
@@ -16,7 +16,6 @@ class CQAttention(nn.Module):
         self.w = nn.Parameter(w)
 
     def forward(self, C, Q, cmask, qmask):
-        ss = []
         cmask = cmask.unsqueeze(2)
         qmask = qmask.unsqueeze(1)
 

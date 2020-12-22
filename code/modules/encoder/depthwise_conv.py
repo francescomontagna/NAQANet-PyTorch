@@ -1,7 +1,8 @@
 import torch.nn as nn
 
+
 class DepthwiseSeparableConv(nn.Module):
-    def __init__(self, in_ch, out_ch, kernel_size, dim, bias = True):
+    def __init__(self, in_ch, out_ch, kernel_size, dim, bias=True):
         super(DepthwiseSeparableConv, self).__init__()
 
         # see https://arxiv.org/pdf/1706.03059.pdf for depth and pointwise convolution

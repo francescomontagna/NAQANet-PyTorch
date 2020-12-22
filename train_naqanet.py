@@ -1,25 +1,18 @@
-"""Train a model on SQuAD.
-Author:
-    Chris Chute (chute@stanford.edu)
+"""Train a model on DROP
+
+Code adapted form https://github.com/chrischute/squad/blob/master/train.py
 """
 
 import numpy as np
 import random
 import torch
 import math
-import json
-import re
-import time
 
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-import torch.optim.lr_scheduler as sched
 import torch.utils.data as data
 
 from collections import OrderedDict
 from json import dumps
-from words2num import words2num
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 from ujson import load as json_load
@@ -177,6 +170,11 @@ def main(args):
                     # Log to console
                     results_str = ', '.join(f'{k}: {v:05.2f}' for k, v in results.items())
                     log.info(f'Dev {results_str}')
+
+    # Save the model
+    print("Saving the model ...")
+    torch.save(model.state_dict(), args.model_dir)
+    print("Done!")
 
 
 def evaluate(model, data_loader, device, eval_file):

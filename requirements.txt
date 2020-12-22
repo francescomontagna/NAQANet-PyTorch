@@ -8,3 +8,7 @@ tensorboardX
 argparse
 datetime
 spacy
+zipfile38
+word2number
+urllib
+numpy

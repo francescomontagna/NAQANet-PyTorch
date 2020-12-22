@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 
-from code.util import masked_softmax
 from code.modules.utils import mask_logits
 
 
