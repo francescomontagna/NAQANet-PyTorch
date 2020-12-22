@@ -17,5 +17,20 @@ To train the model on cuda device, run
 `python3 train_naqanet.py --use_gpu -g <device_id>`
 
 Before training the model:  
-1. Downloaded DROP train and eval datasets and put them in *data/drop* folder.  
+1. Download DROP train and eval datasets and put them in *data/drop* folder.  
 2. run `python3 setup_drop.py`
+
+## Implementation differences
+My current implementation reduce the number of layers in the stack of encoders from 6 to 1, in order to avoid memory issues on the GPU
+
+## Performance
+The current implementation with batch size 4, epochs 30 reach:
+F1 = 34.02, EM = 30.53
+
+On both metrics around 13 points are lost w.r.t. to the results on paper. This can be explained by the following reasons:
+
+* 2 out of 4 answer abilities have been removed
+* Reduced number of layers from 6 to 1 in the stack of encoders before the output layer
+* I might have missed something in the implementation  
+  
+Batch size is reduced to 4 to avoid memory issues with the GPU. Paper reccomends this value equals 16. All other hyperparameters are kept as suggested in the original paper
