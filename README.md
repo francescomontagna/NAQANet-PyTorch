@@ -16,6 +16,6 @@ The model is trained on [DROP](https://arxiv.org/pdf/1903.00161.pdf) dataset.
 To train the model on cuda device, run  
 `python3 train_naqanet.py --use_gpu -g <device_id>`
 
-Before training the model, run  
-`python3 setup_drop.py`  
-To do so first you need to have downloaded DROP train and eval datasets and put them in *data* folder.
+Before training the model:  
+1. Downloaded DROP train and eval datasets and put them in *data/drop* folder.  
+2. run `python3 setup_drop.py`
