@@ -1,5 +1,5 @@
-# PyTorch-NAQANet
-PyTorch implementation of [NAQANet](https://arxiv.org/pdf/1903.00161.pdf).
+# NAQANet PyTorch
+[NAQANet](https://arxiv.org/pdf/1903.00161.pdf) PyTorch implementation.
 
 ## Answer abilities
 The current implementation only handle *passage_span_extraction* and *counting* answer types.  
