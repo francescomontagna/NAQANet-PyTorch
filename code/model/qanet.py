@@ -1,3 +1,11 @@
+"""
+QANet implementation is done integrating code from multiple sources:
+- https://github.com/heliumsea/QANet-pytorch
+- https://github.com/BangLiu/QANet-PyTorch
+- https://github.com/andy840314/QANet-pytorch-
+"""
+
+
 import torch
 import torch.nn as nn
 
