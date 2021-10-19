@@ -1,8 +1,9 @@
 """
 Format custom annotated data as DROP
 
+DROP sample:
 {
-    "id": {
+    "{id, e.g. nfl1984}": {
         "passage: "...",
         "qa_pairs": [
             {
@@ -52,7 +53,7 @@ Format custom annotated data as DROP
 
 
 QUERIES (absolutely review):
-- "population": ["Dead", "injured", "missing", "evacuated", "recovered", "hospitalized", "rescued"]
+- "population": ["dead", "injured", "missing", "evacuated", "recovered", "hospitalized", "rescued"]
   
   recovered: only 3 records
   hospitalized: only 4 records
@@ -61,23 +62,22 @@ QUERIES (absolutely review):
 
 
 - "infrastructure": ["residential", "water_network", "road", "power_network", "bridge"]
-  power_network: only 8 records ()
   bridge: only 5 records (all with 'bridge' in the passage)
-  water_network
+  water_network: 0 records
+  road, power_network: 0 records != from 0
 
 """
 import json
-from dataset_utils import parse_record, get_records_string
+from dataset_utils import naqanet_format
 
 def main():
-    path = "annotated/validation_tweets_gt.json"
+    path = "annotated-data/validation_tweets_gt.json"
     records = []
     with open(path, 'r') as file:
-        file.readline() # read '['
-        while "]" not in file.readline():
-            records.append(parse_record(get_records_string(file)))
-            break
+        records = json.load(file, encoding="utf-8")
 
-    print(records[0])
+    for record in records:
+        naqanet_format(record)
+        break
 
 main()

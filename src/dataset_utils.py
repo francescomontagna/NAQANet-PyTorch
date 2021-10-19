@@ -1,41 +1,60 @@
-def parse_record(record):
+def generate_id(record):
     """
-    record (str): string formatted as a dictionary. each new line is a key-value pair
-    Return:
-        record_dict: dictionary extracted from the string
+    Get unique ID, if needed by the NN
     """
-    record_dict = dict()
-    pairs = record.split("\n")[1:-1] # exclude parenthesis
-    for i, pair in enumerate(pairs):
-        pair = list(map(lambda x: x.strip('\'\'\"\" ,'), pair.split(': ')))
-        key = pair[0]
+    pass
 
-        
-        if "}" in key:
-            return record_dict
-        elif key in ["impact", "population", "infrastructures"]:
-            value = parse_record("\n".join(pairs[i:]))
-            record_dict[key] = value
-            break
-        value = pair[1]
-        record_dict[key] = value
 
-    return record_dict
+def naqanet_format(record):
+    """
+    record (dict): example of input record
+    {
+      "created_at": "2021-05-22T00:39:30.000Z",
+      "event_id": 20498,
+      "informative": true,
+      "lang": "en",
+      "text": "Series Of Strong Earthquakes Rattle China; 2 Dead, 22 Injured, Houses\u00a0Damaged https://t.co/x7Ps4Abg9x",
+      "tweet_id": 1395932302333693957,
+      "impact": {
+         "population": {
+            "dead": 2,
+            "injured": 22
+         },
+         "infrastructures": {
+            "residential": 0
+         }
+      }
+    }
+    """
+    naqanet_record = dict()
+    queries = { # TODO: review queries: the question highly influence the accuracy
+        'population': {
+            "dead": "How many people dead?",
+            "injured": "How many people injured?",
+            "missing": "How many people missing?",
+            "evacuated": "How many people rescued?",
+            "recovered": "How many people recovered?",
+            "hospitalized": "How many people evacuated?",
+            "rescued": "How many people hospitalized?",
+        },
 
-def get_records_string(file):
-    opening = "{"
-    open_parenthesis = 1
-    record = opening
+        # Per infrastructure la vedo moooolto dura che riesca a rispondere.
+        'infrastructures': {
+            "residential": "How many buildings damaged?",
+            "bridge": "How may bridges damaged?"
+        }
+    } 
 
-    for line in file:
-        record += line
+    naqanet_record['qa_pairs'] = list()
+    naqanet_record['passage'] = record['text']
 
-        # FIFO queue to handle parenthesis
-        if "}" in line:
-            open_parenthesis -= 1
-            if open_parenthesis == 0:
-                break
-        elif "{" in line:
-            open_parenthesis += 1
+    for key in queries.keys(): # population, infrastructure
+        for tag, query in queries[key].items(): # e.g. 'dead', 'How many people dead?'
+            qa_pair = dict()
+            qa_pair['question'] = query
+            qa_pair['answer'] = dict()
+            # qa_pair['answer'][] = 
+            
 
-    return record
+            naqanet_record['qa_pairs'].append(qa_pair)
+
