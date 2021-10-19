@@ -1,8 +1,21 @@
 def generate_id(record):
     """
-    Get unique ID, if needed by the NN
+    Generate a unique ID (if needed by the NN)
     """
     pass
+
+
+def format_answer(answer_dict):
+    """
+    Add date and spans to the answer record
+    """
+    answer_dict['date'] = dict()
+    for x in ('day', 'month', 'year'):
+        answer_dict['date'][x] = ""
+
+    answer_dict['spans'] = []
+
+    return answer_dict
 
 
 def naqanet_format(record):
@@ -29,32 +42,43 @@ def naqanet_format(record):
     naqanet_record = dict()
     queries = { # TODO: review queries: the question highly influence the accuracy
         'population': {
-            "dead": "How many people dead?",
-            "injured": "How many people injured?",
-            "missing": "How many people missing?",
-            "evacuated": "How many people rescued?",
-            "recovered": "How many people recovered?",
-            "hospitalized": "How many people evacuated?",
-            "rescued": "How many people hospitalized?",
+            'dead': 'How many people dead?',
+            'injured': 'How many people injured?',
+            'missing': 'How many people missing?',
+            'evacuated': 'How many people rescued?',
+            'recovered': 'How many people recovered?',
+            'hospitalized': 'How many people evacuated?',
+            'rescued': 'How many people hospitalized?',
         },
 
         # Per infrastructure la vedo moooolto dura che riesca a rispondere.
         'infrastructures': {
-            "residential": "How many buildings damaged?",
-            "bridge": "How may bridges damaged?"
+            'residential': 'How many buildings damaged?',
+            'bridge': 'How may bridges damaged?'
         }
     } 
 
-    naqanet_record['qa_pairs'] = list()
     naqanet_record['passage'] = record['text']
+    naqanet_record['qa_pairs'] = list()
 
-    for key in queries.keys(): # population, infrastructure
-        for tag, query in queries[key].items(): # e.g. 'dead', 'How many people dead?'
+    for type_damage in queries.keys(): # population, infrastructure
+        for tag, query in queries[type_damage].items(): # e.g. 'dead', 'How many people dead?'
             qa_pair = dict()
             qa_pair['question'] = query
             qa_pair['answer'] = dict()
-            # qa_pair['answer'][] = 
-            
+            try:
+                qa_pair['answer']['number'] = record['impact'][type_damage][tag]
+            except KeyError: 
+                qa_pair['answer']['number'] = ""
+
+            format_answer(qa_pair['answer'])    
+
+            # qa_pair['query_id'] = generate_id(what do I give here?)
+            qa_pair['validated_answer'] = qa_pair['answer'] # Check
 
             naqanet_record['qa_pairs'].append(qa_pair)
+
+    return naqanet_record
+
+    # print(naqanet_record)
 

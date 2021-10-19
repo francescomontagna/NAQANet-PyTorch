@@ -76,8 +76,9 @@ def main():
     with open(path, 'r') as file:
         records = json.load(file, encoding="utf-8")
 
-    for record in records:
-        naqanet_format(record)
+    drop_formatted = dict()
+    for i, record in enumerate(records):
+        drop_formatted[f"annotated_{i}"] = naqanet_format(record)
         break
-
+    print(drop_formatted)
 main()
