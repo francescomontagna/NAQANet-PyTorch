@@ -19,7 +19,7 @@ def get_setup_drop_args():
 
     parser.add_argument('--train_file',
                         type=str,
-                        default=os.path.join(data_path, 'drop_dataset_train.json'))
+                        default=os.path.join(data_path, 'drop_giacomo.json'))
     parser.add_argument('--dev_file',
                         type=str,
                         default=os.path.join(data_path, 'drop_dataset_dev.json'))

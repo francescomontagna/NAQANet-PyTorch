@@ -2,7 +2,7 @@ def generate_id(record):
     """
     Generate a unique ID (if needed by the NN)
     """
-    pass
+    return None
 
 
 def format_answer(answer_dict):
@@ -73,12 +73,9 @@ def naqanet_format(record):
 
             format_answer(qa_pair['answer'])    
 
-            # qa_pair['query_id'] = generate_id(what do I give here?)
+            qa_pair['query_id'] = generate_id(record)
             qa_pair['validated_answer'] = qa_pair['answer'] # Check
 
             naqanet_record['qa_pairs'].append(qa_pair)
 
     return naqanet_record
-
-    # print(naqanet_record)
-

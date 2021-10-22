@@ -71,14 +71,17 @@ import json
 from dataset_utils import naqanet_format
 
 def main():
-    path = "annotated-data/validation_tweets_gt.json"
+    input_path = "giacomo_dataset/giacomo_annotated.json"
+    output_path = "giacomo_dataset/drop_giacomo.json"
     records = []
-    with open(path, 'r') as file:
+    with open(input_path, 'r') as file:
         records = json.load(file, encoding="utf-8")
 
     drop_formatted = dict()
-    for i, record in enumerate(records):
+    for i, record in enumerate(records[0:5]): # TODO fix
         drop_formatted[f"annotated_{i}"] = naqanet_format(record)
-        break
-    print(drop_formatted)
+        
+    with open(output_path, 'w+') as f:
+        json.dump(drop_formatted, f, indent=3)
+
 main()

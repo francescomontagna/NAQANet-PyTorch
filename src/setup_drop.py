@@ -623,8 +623,4 @@ if __name__ == "__main__":
     download(args)
 
     nlp = spacy.blank("en")
-
-    if debug:
-        pre_process(args, debug=True)
-    else:
-        pre_process(args)
+    pre_process(args, debug)
